@@ -1,0 +1,19 @@
+[project]
+name = "crash-mcp"
+version = "0.1.0"
+description = "MCP server for crash dump analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp",
+    "python-dotenv",
+    "pexpect"
+]
+
+[project.scripts]
+crash-mcp = "crash_mcp.server:main"
+web-auth-mcp = "crash_mcp.server:main"  # Alias for compatibility if needed
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
