@@ -215,6 +215,49 @@ def kb_get_next_steps(output_text: str, current_method: str) -> str:
     return "\n".join(output)
 
 
+@mcp.tool()
+def kb_search_case(query: str) -> str:
+    """Search similar analysis cases."""
+    from crash_mcp.kb.case_manager import get_case_manager
+    manager = get_case_manager()
+    results = manager.search_cases(query, top_k=3)
+    
+    if not results:
+        return "No similar cases found."
+    
+    output = ["Similar cases:"]
+    for r in results:
+        output.append(f"## {r['title']}")
+        output.append(f"Root cause: {r['root_cause']}")
+        if r.get('solution'):
+            output.append(f"Solution: {r['solution']}")
+        output.append("")
+    return "\n".join(output)
+
+
+@mcp.tool()
+def kb_save_case(title: str, panic_signature: str, root_cause: str, 
+                 solution: str = "") -> str:
+    """Save a new analysis case to knowledge base."""
+    from crash_mcp.kb.case_manager import get_case_manager
+    from crash_mcp.kb.models import AnalysisCase
+    import uuid
+    
+    case = AnalysisCase(
+        id=str(uuid.uuid4()),
+        title=title,
+        panic_signature=panic_signature,
+        kernel_version="",
+        root_cause=root_cause,
+        analysis_trace=[],
+        solution=solution
+    )
+    
+    manager = get_case_manager()
+    case_id = manager.save_case(case)
+    return f"Case saved: {case_id}"
+
+
 def main():
     cli()
 
