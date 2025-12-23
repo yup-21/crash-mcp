@@ -1,0 +1,34 @@
+id: rwsem_analysis
+name: RW Semaphore 分析
+triggers:
+  - pattern: "rwsem"
+  - pattern: "rw_semaphore"
+  - pattern: "down_read"
+  - pattern: "down_write"
+  - pattern: "rwsem_down_read_slowpath"
+  - pattern: "rwsem_down_write_slowpath"
+description: 分析读写信号量竞争和死锁
+
+steps:
+  - order: 1
+    command: "crash:struct rw_semaphore <addr>"
+    purpose: 查看 rwsem 结构体
+    
+  - order: 2
+    command: "crash:struct rw_semaphore.owner <addr>"
+    purpose: 获取持锁者
+    
+  - order: 3
+    command: "crash:list -H <wait_list_addr> -s rwsem_waiter.task"
+    purpose: 查看等待队列
+
+outputs:
+  - name: owner_task
+  - name: waiter_count
+  - name: lock_state
+
+next_methods:
+  - condition: "死锁"
+    method_id: deadlock_analysis
+
+tags: [lock, rwsem, synchronization, semaphore]

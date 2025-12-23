@@ -1,0 +1,39 @@
+id: hung_task_analysis
+name: Hung Task 分析
+triggers:
+  - pattern: "INFO: task .* blocked for more than"
+  - pattern: "hung_task_check"
+  - pattern: "khungtaskd"
+  - pattern: "blocked for more than"
+description: 分析任务长时间阻塞的原因
+
+steps:
+  - order: 1
+    command: "crash:ps -m"
+    purpose: 查看所有任务状态
+    
+  - order: 2
+    command: "crash:ps | grep UN"
+    purpose: 查找 UNINTERRUPTIBLE 状态任务
+    
+  - order: 3
+    command: "crash:bt <pid>"
+    purpose: 查看阻塞任务堆栈
+
+outputs:
+  - name: blocked_pid
+  - name: wait_channel
+
+next_methods:
+  - condition: "rwsem"
+    method_id: rwsem_analysis
+  - condition: "mutex"
+    method_id: mutex_analysis
+  - condition: "rw_semaphore"
+    method_id: rwsem_analysis
+  - condition: "down_read"
+    method_id: rwsem_analysis
+  - condition: "down_write"
+    method_id: rwsem_analysis
+
+tags: [hung_task, scheduling, block, UN]

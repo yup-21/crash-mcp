@@ -12,6 +12,13 @@ dependencies = [
     "pexpect",
     "drgn",
     "click",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+kb = [
+    "chromadb",
+    "sentence-transformers",
 ]
 
 
