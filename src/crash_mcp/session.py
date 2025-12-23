@@ -10,11 +10,15 @@ class CrashSession:
     """
     PROMPT = r'crash> '
 
-    def __init__(self, dump_path: str, kernel_path: str = None, binary_path: str = 'crash'):
+    def __init__(self, dump_path: str, kernel_path: str = None, binary_path: str = 'crash',
+                 remote_host: str = None, remote_user: str = None):
         self.dump_path = dump_path
         self.kernel_path = kernel_path
         self.binary_path = binary_path
+        self.remote_host = remote_host
+        self.remote_user = remote_user
         self._process = None
+
 
     def start(self, timeout: int = 30):
         """
@@ -25,12 +29,36 @@ class CrashSession:
             args.append(self.kernel_path)
         args.append(self.dump_path)
 
-        cmd = f"{self.binary_path} {' '.join(args)}"
-        logger.info(f"Starting crash session: {cmd}")
+        if self.remote_host:
+            # Remote Execution via SSH
+            # ssh user@host -t "crash args"
+            ssh_cmd = ['ssh']
+            if self.remote_user:
+                ssh_cmd.append(f"{self.remote_user}@{self.remote_host}")
+            else:
+                ssh_cmd.append(self.remote_host)
+            
+            # Force pseudo-terminal allocation for interactive session
+            ssh_cmd.append('-t')
+            
+            # Join local args for the remote command string
+            # naive joining; strictly we should quote args if they have spaces
+            remote_cmd = f"{self.binary_path} {' '.join(args)}"
+            ssh_cmd.append(remote_cmd)
+            
+            spawn_bin = 'ssh'
+            spawn_args = ssh_cmd[1:]
+            
+            logger.info(f"Starting remote crash session: {' '.join(ssh_cmd)}")
+        else:
+            # Local Execution
+            spawn_bin = self.binary_path
+            spawn_args = args
+            logger.info(f"Starting crash session: {self.binary_path} {' '.join(args)}")
 
         try:
             # encoding='utf-8' is important for pexpect in Python 3
-            self._process = pexpect.spawn(self.binary_path, args, encoding='utf-8', timeout=timeout)
+            self._process = pexpect.spawn(spawn_bin, spawn_args, encoding='utf-8', timeout=timeout)
             
             # Wait for the initial prompt to ensure session is ready
             # We might need to handle cases where it asks for terminal type or page size, 

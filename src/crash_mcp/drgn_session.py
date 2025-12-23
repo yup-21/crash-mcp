@@ -10,12 +10,16 @@ class DrgnSession:
     """
     PROMPT = r'>>> '
 
-    def __init__(self, dump_path: str, kernel_path: str = None, binary_path: str = 'drgn'):
+    def __init__(self, dump_path: str, kernel_path: str = None, binary_path: str = 'drgn',
+                 remote_host: str = None, remote_user: str = None):
         self.dump_path = dump_path
         self.kernel_path = kernel_path
+        self.remote_host = remote_host
+        self.remote_user = remote_user
         self._process = None
         # Allow overriding binary path via env var for testing (e.g. using mock_drgn.py)
         self.binary_path = os.environ.get('DRGN_BINARY', binary_path)
+
 
     def start(self, timeout: int = 30):
         """
@@ -39,12 +43,31 @@ class DrgnSession:
         if self.kernel_path:
             args.extend(['-s', self.kernel_path])
             
-        cmd = f"{self.binary_path} {' '.join(args)}"
-        logger.info(f"Starting drgn session: {cmd}")
+        if self.remote_host:
+            # Remote Execution via SSH
+            ssh_cmd = ['ssh']
+            if self.remote_user:
+                ssh_cmd.append(f"{self.remote_user}@{self.remote_host}")
+            else:
+                ssh_cmd.append(self.remote_host)
+            
+            ssh_cmd.append('-t')
+            
+            remote_cmd = f"{self.binary_path} {' '.join(args)}"
+            ssh_cmd.append(remote_cmd)
+            
+            spawn_bin = 'ssh'
+            spawn_args = ssh_cmd[1:]
+            
+            logger.info(f"Starting remote drgn session: {' '.join(ssh_cmd)}")
+        else:
+            spawn_bin = self.binary_path
+            spawn_args = args
+            logger.info(f"Starting drgn session: {spawn_bin} {' '.join(spawn_args)}")
 
         try:
             # encoding='utf-8' is important
-            self._process = pexpect.spawn(self.binary_path, args, encoding='utf-8', timeout=timeout)
+            self._process = pexpect.spawn(spawn_bin, spawn_args, encoding='utf-8', timeout=timeout)
             
             # Expect the prompt
             self._process.expect(self.PROMPT)

@@ -1,52 +1,46 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from crash_mcp.server import analyze_target, sessions, drgn_sessions
+from crash_mcp.server import analyze_target, unified_sessions
 
-@patch('crash_mcp.server.CrashSession')
-@patch('crash_mcp.server.DrgnSession')
+@patch('crash_mcp.server.UnifiedSession')
 @patch('os.path.exists')
-def test_analyze_target_dual_success(mock_exists, MockDrgnSession, MockCrashSession):
+def test_analyze_target_unified_success(mock_exists, MockUnifiedSession):
     # Setup mocks
     mock_exists.return_value = True
     
-    mock_crash = MockCrashSession.return_value
-    mock_drgn = MockDrgnSession.return_value
+    mock_session = MockUnifiedSession.return_value
     
     # Run
+    # Local path
     result = analyze_target('/tmp/vmcore', '/tmp/vmlinux')
     
-    # Verify Crash Session started
-    MockCrashSession.assert_called_with('/tmp/vmcore', '/tmp/vmlinux')
-    mock_crash.start.assert_called_once()
+    # Verify Unified Session started
+    MockUnifiedSession.assert_called_with('/tmp/vmcore', '/tmp/vmlinux', remote_host=None, remote_user=None)
+    mock_session.start.assert_called_once()
     
-    # Verify Drgn Session started
-    MockDrgnSession.assert_called_with('/tmp/vmcore', '/tmp/vmlinux')
-    mock_drgn.start.assert_called_once()
-    
-    # Verify output contains both
-    assert "Crash Session: Started" in result
-    assert "Drgn Session: Started" in result
-    
-    # Verify both are in global state (we might need to check the IDs from internal logic, 
-    # but the mocks are freshly created so checking side effects on the dicts is tricky 
-    # if we don't clear them or know the IDs.
-    # However, standard usage of _start_session_internal updates the global dicts.)
-    assert len(sessions) > 0
-    assert len(drgn_sessions) > 0
+    assert "Unified Session started successfully" in result
+    assert len(unified_sessions) > 0
 
-@patch('crash_mcp.server.CrashSession')
-@patch('crash_mcp.server.DrgnSession')
+@patch('crash_mcp.server.UnifiedSession')
+def test_analyze_target_remote(MockUnifiedSession):
+    mock_session = MockUnifiedSession.return_value
+    
+    # Remote path (no local check)
+    result = analyze_target('/tmp/remote_core', '/tmp/remote_vmlinux', 
+                          ssh_host='example.com', ssh_user='user')
+    
+    MockUnifiedSession.assert_called_with('/tmp/remote_core', '/tmp/remote_vmlinux', 
+                                        remote_host='example.com', remote_user='user')
+    mock_session.start.assert_called_once()
+    
+    assert "Unified Session started successfully" in result
+
+@patch('crash_mcp.server.UnifiedSession')
 @patch('os.path.exists')
-def test_analyze_target_partial_failure(mock_exists, MockDrgnSession, MockCrashSession):
+def test_analyze_target_failure(mock_exists, MockUnifiedSession):
     mock_exists.return_value = True
-    
-    # Crash succeeds
-    mock_crash = MockCrashSession.return_value
-    
-    # Drgn fails
-    MockDrgnSession.side_effect = Exception("Drgn failed")
+    MockUnifiedSession.side_effect = Exception("Unified init failed")
     
     result = analyze_target('/tmp/vmcore', '/tmp/vmlinux')
     
-    assert "Crash Session: Started" in result
-    assert "Drgn Session: Failed (Drgn failed)" in result
+    assert "Failed to start unified session" in result

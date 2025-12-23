@@ -8,6 +8,8 @@ from crash_mcp.session import CrashSession
 from crash_mcp.discovery import CrashDiscovery
 from crash_mcp.config import Config
 from crash_mcp.drgn_session import DrgnSession
+from crash_mcp.unified_session import UnifiedSession
+
 
 
 # Configure logging
@@ -22,8 +24,12 @@ mcp = FastMCP("crash-mcp")
 # State management
 sessions: Dict[str, CrashSession] = {}
 drgn_sessions: Dict[str, DrgnSession] = {}
+unified_sessions: Dict[str, UnifiedSession] = {}
+
 last_session_id: Optional[str] = None
 last_drgn_session_id: Optional[str] = None
+last_unified_session_id: Optional[str] = None
+
 
 
 # --- Tools ---
@@ -99,28 +105,75 @@ def start_crash_session(dump_path: str, kernel_path: Optional[str] = None) -> st
         return f"Error starting crash session: {str(e)}"
 
 @mcp.tool()
-def analyze_target(vmcore_path: str, vmlinux_path: str) -> str:
+def analyze_target(vmcore_path: str, vmlinux_path: str, 
+                  ssh_host: Optional[str] = None, ssh_user: Optional[str] = None) -> str:
     """
-    Starts both crash and drgn analysis sessions for the target.
-    This sets the default active sessions for both tools.
-    """
-    results = []
+    Starts a Unified Analysis Session for the target (crash + drgn).
+    Supports local or remote (SSH) targets.
     
-    # Start Crash Session
-    try:
-        crash_id = _start_session_internal(vmcore_path, vmlinux_path)
-        results.append(f"Crash Session: Started (ID: {crash_id})")
-    except Exception as e:
-        results.append(f"Crash Session: Failed ({str(e)})")
+    Args:
+        vmcore_path: Path to vmcore (local or remote).
+        vmlinux_path: Path to vmlinux (local or remote).
+        ssh_host: Optional hostname/IP for remote execution.
+        ssh_user: Optional username for remote execution.
         
-    # Start Drgn Session
+    Returns:
+        A Session ID that routes commands automatically to crash or drgn.
+    """
+    global last_unified_session_id
+    
+    # Validation
+    if not ssh_host and not os.path.exists(vmcore_path):
+        # Only check local existence if not remote
+        return f"Error: Dump file not found locally at {vmcore_path} and no remote host specified."
+
+    session_id = str(uuid.uuid4())
+    logger.info(f"Starting Unified Session {session_id} for {vmcore_path} (Remote: {ssh_host})")
+    
     try:
-        drgn_id = _start_drgn_session_internal(vmcore_path, vmlinux_path)
-        results.append(f"Drgn Session: Started (ID: {drgn_id})")
-    except Exception as e:
-        results.append(f"Drgn Session: Failed ({str(e)})")
+        session = UnifiedSession(vmcore_path, vmlinux_path, 
+                               remote_host=ssh_host, remote_user=ssh_user)
+        session.start()
         
-    return "\n".join(results)
+        unified_sessions[session_id] = session
+        last_unified_session_id = session_id
+        
+        return f"Unified Session started successfully. ID: {session_id}\n(Wraps both 'crash' and 'drgn' engines. Commands are automatically routed.)"
+    except Exception as e:
+        logger.error(f"Failed to start unified session: {e}")
+        return f"Failed to start unified session: {str(e)}"
+
+@mcp.tool()
+def run_command(command: str, session_id: Optional[str] = None, truncate: bool = True) -> str:
+    """
+    Executes a command in the Unified Session.
+    Automatically routes to 'crash' or 'drgn' based on syntax.
+    Use prefixes 'crash:' or 'drgn:' to force routing.
+    """
+    target_id = session_id or last_unified_session_id
+    
+    if not target_id:
+        return "Error: No session specified and no active default session."
+    
+    if target_id not in unified_sessions:
+        # Fallback to legacy single sessions if ID matches? 
+        # For simplicity, strict separation or check others.
+        if target_id in sessions:
+             return run_crash_command(command, session_id=target_id, truncate=truncate)
+        if target_id in drgn_sessions:
+             return run_drgn_command(command, session_id=target_id, truncate=truncate)
+        return f"Error: Session ID {target_id} not found."
+    
+    session = unified_sessions[target_id]
+    if not session.is_active():
+        del unified_sessions[target_id]
+        return "Error: Session is no longer active."
+        
+    try:
+        return session.execute_command(command, truncate=truncate)
+    except Exception as e:
+        return f"Error executing command: {str(e)}"
+
 
 
 @mcp.tool()
