@@ -226,6 +226,7 @@ crash-mcp/
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
+| `KB_BASE_DIR` | `""` (项目根目录) | 知识库/数据根目录 |
 | `KB_SIMILARITY_THRESHOLD` | `0.2` | 向量匹配阈值 (距离) |
 | `KB_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | 嵌入模型名称 |
 

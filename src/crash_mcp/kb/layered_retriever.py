@@ -234,23 +234,8 @@ class LayeredRetriever:
 # Global instance
 _layered_retriever = None
 
-def get_layered_retriever(methods_dir: str = "knowledge/methods") -> LayeredRetriever:
+def get_layered_retriever(methods_dir: str = "knowledge/methods", data_dir: str = "data/chroma") -> LayeredRetriever:
     global _layered_retriever
     if _layered_retriever is None:
-        # Resolve absolute path for consistency (Fix from previous task)
-        if not os.path.isabs(methods_dir):
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # src/crash_mcp/../../
-            # Actually, base_dir from __file__ src/crash_mcp/kb/layered.py -> src/crash_mcp/kb -> src/crash_mcp -> src
-            # We want project root.
-            # If __file__ is /home/user/crash-mcp/src/crash_mcp/kb/layered_retriever.py
-            # root is /home/user/crash-mcp
-            # .../src/crash_mcp/kb/.. -> src/crash_mcp -> src -> crash-mcp (3 ups)
-            # Actually server.py used: os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            # Let's trust the caller to pass absolute path OR do robust resolution here.
-            # Best is to follow server.py pattern or just be relative to CWD if we assume server sets CWD.
-            # But we had issues with relative paths.
-            # Safer to rely on server to pass get_retriever(abs_path).
-            pass
-            
-        _layered_retriever = LayeredRetriever(methods_dir)
+        _layered_retriever = LayeredRetriever(methods_dir, persist_dir=data_dir)
     return _layered_retriever

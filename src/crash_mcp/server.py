@@ -168,19 +168,22 @@ def get_sys_info(session_id: Optional[str] = None) -> str:
 # --- Knowledge Base Tools ---
 
 
-def _get_knowledge_dir() -> str:
-    """Get absolute path to knowledge directory."""
-    # .../src/crash_mcp/server.py -> .../knowledge
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    return os.path.join(base_dir, 'knowledge')
+def _get_kb_base_dir() -> str:
+    """Get absolute path to KB base directory."""
+    base = Config.KB_BASE_DIR
+    if base and os.path.isabs(base):
+        return base
+    # Default: project root
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(project_root, base) if base else project_root
 
 
 def _get_methods_dir() -> str:
-    return os.path.join(_get_knowledge_dir(), 'methods')
+    return os.path.join(_get_kb_base_dir(), 'knowledge', 'methods')
 
 
-def _get_cases_dir() -> str:
-    return os.path.join(_get_knowledge_dir(), 'cases')
+def _get_data_dir() -> str:
+    return os.path.join(_get_kb_base_dir(), 'data', 'chroma')
 
 
 # --- Legacy KB Tools removed (kb_search_case, kb_save_case) ---
@@ -192,7 +195,7 @@ def _get_cases_dir() -> str:
 @mcp.tool()
 def kb_search_symptom(query: str) -> str:
     """[L1] Search Symptom Library (Vector+Keyword) for matching methods."""
-    retriever = get_layered_retriever(_get_methods_dir())
+    retriever = get_layered_retriever(_get_methods_dir(), _get_data_dir())
     results = retriever.search_symptom(query, top_k=3)
     
     if not results:
@@ -214,7 +217,7 @@ def kb_search_symptom(query: str) -> str:
 def kb_analyze_method(method_id: str) -> str:
     """[L2] Execute Analysis Method and return structured context.
     Returns JSON string with commands to run and expected outputs."""
-    retriever = get_layered_retriever(_get_methods_dir())
+    retriever = get_layered_retriever(_get_methods_dir(), _get_data_dir())
     method_data = retriever.analyze_method(method_id)
     return json.dumps(method_data, indent=2)
 
@@ -228,7 +231,7 @@ def kb_search_subproblem(query: str, context: str) -> str:
     except:
         ctx_dict = {"raw": context}
         
-    retriever = get_layered_retriever(_get_methods_dir())
+    retriever = get_layered_retriever(_get_methods_dir(), _get_data_dir())
     hits = retriever.search_subproblem(query, ctx_dict)
     
     if not hits:
@@ -246,7 +249,7 @@ def kb_match_or_save_node(fingerprint: str, data: str) -> str:
     except:
         return "Error: Data must be valid JSON"
         
-    retriever = get_layered_retriever(_get_methods_dir())
+    retriever = get_layered_retriever(_get_methods_dir(), _get_data_dir())
     node_id = retriever.match_or_save_node(fingerprint, data_dict)
     return f"Node Ref: {node_id}"
 
@@ -265,7 +268,7 @@ def kb_run_workflow(panic_text: str, session_id: Optional[str] = None) -> str:
 @mcp.tool()
 def kb_mark_node_failed(node_id: str) -> str:
     """[L3] Mark a case node as failed/dead-end for negative feedback."""
-    retriever = get_layered_retriever(_get_methods_dir())
+    retriever = get_layered_retriever(_get_methods_dir(), _get_data_dir())
     success = retriever.mark_node_failed(node_id)
     if success:
         return f"Node {node_id} marked as failed."

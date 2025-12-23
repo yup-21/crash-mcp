@@ -13,5 +13,6 @@ class Config:
     CRASH_SEARCH_PATH = os.getenv("CRASH_SEARCH_PATH", "/var/crash")
     
     # Knowledge Base
+    KB_BASE_DIR = os.getenv("KB_BASE_DIR", "")  # Empty = use project-relative paths
     KB_SIMILARITY_THRESHOLD = float(os.getenv("KB_SIMILARITY_THRESHOLD", "0.2"))
     KB_EMBEDDING_MODEL = os.getenv("KB_EMBEDDING_MODEL", "all-MiniLM-L6-v2")

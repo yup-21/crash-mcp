@@ -31,3 +31,8 @@ core.*
 tests/vmcore
 tests/vmlinux
 tests/crash_data/
+
+# Knowledge Base Data (user-specific)
+data/
+knowledge/cases/
+*.log
