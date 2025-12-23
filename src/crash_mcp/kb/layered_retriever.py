@@ -46,12 +46,25 @@ class LayeredRetriever:
         self.loader = MethodLoader(methods_dir)
         self.simple_retriever = SimpleRetriever(methods_dir)
         
-        # Init Vector DB
+        # Init Vector DB with custom embedding
         chromadb = _init_chroma()
         if chromadb:
             self.client = chromadb.PersistentClient(path=persist_dir)
-            self.symptom_collection = self.client.get_or_create_collection(name="symptoms")
-            self.case_node_collection = self.client.get_or_create_collection(name="case_nodes")
+            
+            # Use configurable embedding model
+            try:
+                from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+                ef = SentenceTransformerEmbeddingFunction(model_name=Config.KB_EMBEDDING_MODEL)
+            except (ImportError, ValueError) as e:
+                ef = None  # Use ChromaDB default
+                logger.info(f"Using default embedding function: {e}")
+            
+            self.symptom_collection = self.client.get_or_create_collection(
+                name="symptoms", embedding_function=ef
+            )
+            self.case_node_collection = self.client.get_or_create_collection(
+                name="case_nodes", embedding_function=ef
+            )
         else:
             self.client = None
             
