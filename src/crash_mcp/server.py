@@ -7,6 +7,8 @@ from mcp.server.fastmcp import FastMCP
 from crash_mcp.session import CrashSession
 from crash_mcp.discovery import CrashDiscovery
 from crash_mcp.config import Config
+from crash_mcp.drgn_session import DrgnSession
+
 
 # Configure logging
 logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL.upper()), 
@@ -17,8 +19,12 @@ logger = logging.getLogger("crash-mcp")
 mcp = FastMCP("crash-mcp")
 
 # State management
+# State management
 sessions: Dict[str, CrashSession] = {}
+drgn_sessions: Dict[str, DrgnSession] = {}
 last_session_id: Optional[str] = None
+last_drgn_session_id: Optional[str] = None
+
 
 # --- Tools ---
 
@@ -95,15 +101,27 @@ def start_crash_session(dump_path: str, kernel_path: Optional[str] = None) -> st
 @mcp.tool()
 def analyze_target(vmcore_path: str, vmlinux_path: str) -> str:
     """
-    Starts a crash analysis session with explicit vmcore and vmlinux paths.
-    This sets the default active session, so subsequent commands (run_crash_command) 
-    don't need to specify a session_id.
+    Starts both crash and drgn analysis sessions for the target.
+    This sets the default active sessions for both tools.
     """
+    results = []
+    
+    # Start Crash Session
     try:
-        session_id = _start_session_internal(vmcore_path, vmlinux_path)
-        return f"Analysis started for {vmcore_path}. Session ID: {session_id}. You can now run commands."
+        crash_id = _start_session_internal(vmcore_path, vmlinux_path)
+        results.append(f"Crash Session: Started (ID: {crash_id})")
     except Exception as e:
-        return f"Failed to start analysis: {str(e)}"
+        results.append(f"Crash Session: Failed ({str(e)})")
+        
+    # Start Drgn Session
+    try:
+        drgn_id = _start_drgn_session_internal(vmcore_path, vmlinux_path)
+        results.append(f"Drgn Session: Started (ID: {drgn_id})")
+    except Exception as e:
+        results.append(f"Drgn Session: Failed ({str(e)})")
+        
+    return "\n".join(results)
+
 
 @mcp.tool()
 def run_crash_command(command: str, session_id: Optional[str] = None, truncate: bool = True) -> str:
@@ -147,6 +165,68 @@ def stop_crash_session(session_id: str) -> str:
     session.close()
     del sessions[session_id]
     return f"Session {session_id} closed."
+
+# --- Drgn Tools ---
+
+def _start_drgn_session_internal(dump_path: str, kernel_path: Optional[str] = None) -> str:
+    """Helper to start drgn session and update global state."""
+    global last_drgn_session_id
+    
+    if not os.path.exists(dump_path):
+        return f"Error: Dump file not found at {dump_path}"
+        
+    session_id = str(uuid.uuid4())
+    logger.info(f"Starting drgn session {session_id} for {dump_path}")
+    
+    try:
+        session = DrgnSession(dump_path, kernel_path)
+        session.start()
+        drgn_sessions[session_id] = session
+        last_drgn_session_id = session_id 
+        return session_id
+    except Exception as e:
+        logger.error(f"Failed to start drgn session: {e}")
+        raise e
+
+@mcp.tool()
+def start_drgn_session(dump_path: str, kernel_path: Optional[str] = None) -> str:
+    """
+    Starts a new interactive drgn analysis session for the given dump.
+    Returns the Session ID.
+    Notes:
+    - drgn requires debug symbols (vmlinux). If kernel_path is usually required unless drgn can find it automatically.
+    """
+    try:
+        session_id = _start_drgn_session_internal(dump_path, kernel_path)
+        return f"Drgn session started successfully. Session ID: {session_id}"
+    except Exception as e:
+        return f"Error starting drgn session: {str(e)}"
+
+@mcp.tool()
+def run_drgn_command(command: str, session_id: Optional[str] = None, truncate: bool = True) -> str:
+    """
+    Executes a python command in an active drgn session.
+    If session_id is omitted, uses the most recently started drgn session.
+    """
+    target_id = session_id or last_drgn_session_id
+    
+    if not target_id:
+        return "Error: No drgn session specified and no active default session."
+        
+    if target_id not in drgn_sessions:
+        return f"Error: Drgn Session ID {target_id} not found."
+    
+    session = drgn_sessions[target_id]
+    if not session.is_active():
+        del drgn_sessions[target_id]
+        return "Error: Session is no longer active."
+        
+    try:
+        output = session.execute_command(command, truncate=truncate)
+        return output
+    except Exception as e:
+        return f"Error executing command: {str(e)}"
+
 
 @mcp.tool()
 def get_sys_info(session_id: Optional[str] = None) -> str:
