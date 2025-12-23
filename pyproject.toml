@@ -3,7 +3,9 @@ name = "crash-mcp"
 version = "0.1.0"
 description = "MCP server for crash dump analysis"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
+
 dependencies = [
     "mcp",
     "python-dotenv",
