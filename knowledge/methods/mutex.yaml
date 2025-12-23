@@ -1,0 +1,31 @@
+id: mutex_analysis
+name: Mutex 分析
+triggers:
+  - pattern: "mutex"
+  - pattern: "__mutex_lock"
+  - pattern: "mutex_lock_slowpath"
+  - pattern: "mutex_lock_killable"
+description: 分析互斥锁竞争和死锁
+
+steps:
+  - order: 1
+    command: "crash:struct mutex <addr>"
+    purpose: 查看 mutex 结构体
+    
+  - order: 2
+    command: "crash:struct mutex.owner <addr>"
+    purpose: 获取持锁者 task_struct
+    
+  - order: 3
+    command: "crash:bt <owner_pid>"
+    purpose: 查看持锁者堆栈
+
+outputs:
+  - name: owner_task
+  - name: lock_state
+
+next_methods:
+  - condition: "死锁"
+    method_id: deadlock_analysis
+
+tags: [lock, mutex, synchronization]
