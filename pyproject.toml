@@ -7,8 +7,12 @@ requires-python = ">=3.10"
 dependencies = [
     "mcp",
     "python-dotenv",
-    "pexpect"
+    "pexpect",
+    "drgn",
+    "click",
 ]
+
+
 
 [project.scripts]
 crash-mcp = "crash_mcp.server:main"

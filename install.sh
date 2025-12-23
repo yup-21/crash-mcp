@@ -30,6 +30,8 @@ echo "Installing project in editable mode..."
 pip install -e .
 
 echo "Done!"
+echo "Dependencies (including drgn and mcp) installed."
+
 echo "To use the server, activate the environment:"
 echo "  source $VENV_DIR/bin/activate"
 echo "  crash-mcp"
