@@ -41,11 +41,16 @@ crash-mcp --transport sse --port 8000
 | 工具 | 说明 |
 |------|------|
 | `list_crash_dumps` | 扫描目录查找 vmcore 文件 |
-| `start_session` | 启动分析会话（需要 vmcore 和 vmlinux 路径） |
-| `run_crash_command` | 执行 crash 命令（如 sys, bt, log, ps） |
-| `run_drgn_command` | 执行 drgn Python 代码（如 prog.crashed_thread()） |
+| `start_session` | 启动分析会话 |
+| `run_crash_command` | 执行 crash 命令 |
+| `run_drgn_command` | 执行 drgn Python 代码 |
 | `stop_session` | 关闭会话 |
 | `get_sys_info` | 获取系统信息 |
+| `kb_search_method` | 根据 panic 信息检索分析方法 |
+| `kb_list_methods` | 列出所有分析方法 |
+| `kb_get_next_steps` | 建议下一步分析方法 |
+| `kb_search_case` | 检索相似案例 |
+| `kb_save_case` | 保存分析案例 |
 
 ### 配置
 
