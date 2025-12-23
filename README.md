@@ -82,6 +82,30 @@ cp .env.example .env
 - `CRASH_SEARCH_PATH`: 本地搜寻转储文件的路径。
 - `LOG_LEVEL`: 日志级别 (INFO/DEBUG)。
 
+### 4. 客户端配置 (Client Configuration)
+
+**Claude Desktop 配置示例 (`claude_desktop_config.json`)**:
+
+```json
+{
+  "mcpServers": {
+    "crash-analysis": {
+      "command": "/absolute/path/to/crash-mcp/venv/bin/crash-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "CRASH_SEARCH_PATH": "/var/crash"
+      }
+    }
+  }
+}
+```
+
+**SSE 连接信息 (SSE Connection Info)**:
+如果你的客户端支持通过 HTTP/SSE 连接 (如 Web UI 或远程 MCP 客户端):
+- **Server URL**: `http://localhost:8000/sse`
+- **启动命令**: `crash-mcp --transport sse --port 8000`
+
+
 ## 示例 (Examples)
 
 **场景 1: 本地分析**
