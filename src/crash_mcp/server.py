@@ -9,6 +9,7 @@ from crash_mcp.session import CrashSession
 from crash_mcp.discovery import CrashDiscovery
 from crash_mcp.config import Config
 from crash_mcp.unified_session import UnifiedSession
+from crash_mcp.kb import get_retriever
 
 
 # Configure logging
@@ -160,6 +161,58 @@ def stop_session(session_id: Optional[str] = None) -> str:
 def get_sys_info(session_id: Optional[str] = None) -> str:
     """Convenience tool to get system info (runs 'sys' command)."""
     return run_crash_command("sys", session_id)
+
+
+# --- Knowledge Base Tools ---
+
+@mcp.tool()
+def kb_search_method(panic_text: str) -> str:
+    """Search analysis methods by panic/error text. Returns matching methods with steps."""
+    retriever = get_retriever("knowledge/methods")
+    results = retriever.search_method(panic_text, top_k=3)
+    
+    if not results:
+        return "No matching analysis methods found."
+    
+    output = []
+    for r in results:
+        output.append(f"## {r['name']} (score: {r['score']})")
+        output.append(f"Description: {r['description']}")
+        if r.get('matched_patterns'):
+            output.append(f"Matched: {', '.join(r['matched_patterns'])}")
+        output.append("Steps:")
+        for step in r['steps']:
+            output.append(f"  - {step['command']} ({step['purpose']})")
+        output.append("")
+    
+    return "\n".join(output)
+
+
+@mcp.tool()
+def kb_list_methods() -> str:
+    """List all available analysis methods."""
+    retriever = get_retriever("knowledge/methods")
+    methods = retriever.list_methods()
+    
+    output = ["Available analysis methods:"]
+    for m in methods:
+        output.append(f"  - {m['id']}: {m['name']}")
+    return "\n".join(output)
+
+
+@mcp.tool()
+def kb_get_next_steps(output_text: str, current_method: str) -> str:
+    """Suggest next analysis methods based on current output."""
+    retriever = get_retriever("knowledge/methods")
+    suggestions = retriever.get_next_methods(output_text, current_method)
+    
+    if not suggestions:
+        return "No further analysis methods suggested."
+    
+    output = ["Suggested next methods:"]
+    for s in suggestions:
+        output.append(f"  - {s['name']} (reason: {s['reason']})")
+    return "\n".join(output)
 
 
 def main():

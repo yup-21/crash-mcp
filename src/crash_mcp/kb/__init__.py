@@ -1,9 +1,5 @@
 """Knowledge Base module for crash analysis."""
 from .models import AnalysisMethod, AnalysisCase, MethodLoader
+from .simple_retriever import SimpleRetriever, get_retriever
 
-__all__ = ['AnalysisMethod', 'AnalysisCase', 'MethodLoader']
-
-# Lazy import retriever to avoid chromadb dependency if not needed
-def get_retriever(*args, **kwargs):
-    from .retriever import KnowledgeRetriever
-    return KnowledgeRetriever(*args, **kwargs)
+__all__ = ['AnalysisMethod', 'AnalysisCase', 'MethodLoader', 'SimpleRetriever', 'get_retriever']
