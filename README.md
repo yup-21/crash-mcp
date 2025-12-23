@@ -19,7 +19,8 @@
     - `run_crash_command`: 在当前会话中执行任意 `crash` 命令 (如 `sys`, `bt`, `ps` 等)。
     - `get_sys_info`: 获取系统基本信息的快捷工具。
 5.  **配置灵活**:
-    - 支持通过 `.env` 文件配置浏览器（预留）和分析路径。
+    - 支持通过 `.env` 文件配置分析路径。
+
 
 ## 安装与使用 (Installation & Usage)
 

@@ -1,8 +1,10 @@
 import logging
 import uuid
 import os
+import click
 from typing import Optional, List, Dict
 from mcp.server.fastmcp import FastMCP
+
 
 from crash_mcp.session import CrashSession
 from crash_mcp.discovery import CrashDiscovery
@@ -290,7 +292,23 @@ def get_sys_info(session_id: Optional[str] = None) -> str:
     return run_crash_command("sys", session_id)
 
 def main():
-    mcp.run()
+    # mcp.run() # Old
+    pass
+
+@click.command()
+@click.option('--transport', type=click.Choice(['stdio', 'sse']), default='stdio', help='Transport mode')
+@click.option('--port', type=int, default=8000, help='Port for SSE mode')
+@click.option('--host', default='0.0.0.0', help='Host for SSE mode')
+def cli(transport, port, host):
+    if transport == 'sse':
+        logger.info(f"Starting SSE server on {host}:{port}")
+        mcp.settings.port = port
+        mcp.settings.host = host
+        mcp.run(transport='sse')
+    else:
+        logger.info("Starting Stdio server")
+        mcp.run(transport='stdio')
 
 if __name__ == "__main__":
-    main()
+    cli()
+
