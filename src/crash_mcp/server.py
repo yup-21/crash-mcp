@@ -9,7 +9,9 @@ from crash_mcp.session import CrashSession
 from crash_mcp.discovery import CrashDiscovery
 from crash_mcp.config import Config
 from crash_mcp.unified_session import UnifiedSession
-from crash_mcp.kb import get_retriever
+from crash_mcp.unified_session import UnifiedSession
+from crash_mcp.kb import get_retriever, get_layered_retriever
+import json
 
 
 # Configure logging
@@ -165,98 +167,109 @@ def get_sys_info(session_id: Optional[str] = None) -> str:
 
 # --- Knowledge Base Tools ---
 
+
+def _get_knowledge_dir() -> str:
+    """Get absolute path to knowledge directory."""
+    # .../src/crash_mcp/server.py -> .../knowledge
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(base_dir, 'knowledge')
+
+
+def _get_methods_dir() -> str:
+    return os.path.join(_get_knowledge_dir(), 'methods')
+
+
+def _get_cases_dir() -> str:
+    return os.path.join(_get_knowledge_dir(), 'cases')
+
+
+# --- Legacy KB Tools removed (kb_search_case, kb_save_case) ---
+# Use CaseNode-based tools: kb_match_or_save_node, kb_search_subproblem
+
+
+# --- Agent Tools (Layered KB) ---
+
 @mcp.tool()
-def kb_search_method(panic_text: str) -> str:
-    """Search analysis methods by panic/error text. Returns matching methods with steps."""
-    retriever = get_retriever("knowledge/methods")
-    results = retriever.search_method(panic_text, top_k=3)
+def kb_search_symptom(query: str) -> str:
+    """[L1] Search Symptom Library (Vector+Keyword) for matching methods."""
+    retriever = get_layered_retriever(_get_methods_dir())
+    results = retriever.search_symptom(query, top_k=3)
     
     if not results:
-        return "No matching analysis methods found."
-    
+        return "No matching symptoms/methods found."
+        
     output = []
     for r in results:
-        output.append(f"## {r['name']} (score: {r['score']})")
-        output.append(f"Description: {r['description']}")
-        if r.get('matched_patterns'):
-            output.append(f"Matched: {', '.join(r['matched_patterns'])}")
+        output.append(f"## Protocol: {r['name']} (Score: {r['score']:.2f})")
+        output.append(f"ID: {r['id']}")
+        output.append(f"Source: {r.get('source', 'unknown')}")
         output.append("Steps:")
-        for step in r['steps']:
-            output.append(f"  - {step['command']} ({step['purpose']})")
-        output.append("")
-    
-    return "\n".join(output)
-
-
-@mcp.tool()
-def kb_list_methods() -> str:
-    """List all available analysis methods."""
-    retriever = get_retriever("knowledge/methods")
-    methods = retriever.list_methods()
-    
-    output = ["Available analysis methods:"]
-    for m in methods:
-        output.append(f"  - {m['id']}: {m['name']}")
-    return "\n".join(output)
-
-
-@mcp.tool()
-def kb_get_next_steps(output_text: str, current_method: str) -> str:
-    """Suggest next analysis methods based on current output."""
-    retriever = get_retriever("knowledge/methods")
-    suggestions = retriever.get_next_methods(output_text, current_method)
-    
-    if not suggestions:
-        return "No further analysis methods suggested."
-    
-    output = ["Suggested next methods:"]
-    for s in suggestions:
-        output.append(f"  - {s['name']} (reason: {s['reason']})")
-    return "\n".join(output)
-
-
-@mcp.tool()
-def kb_search_case(query: str) -> str:
-    """Search similar analysis cases."""
-    from crash_mcp.kb.case_manager import get_case_manager
-    manager = get_case_manager()
-    results = manager.search_cases(query, top_k=3)
-    
-    if not results:
-        return "No similar cases found."
-    
-    output = ["Similar cases:"]
-    for r in results:
-        output.append(f"## {r['title']}")
-        output.append(f"Root cause: {r['root_cause']}")
-        if r.get('solution'):
-            output.append(f"Solution: {r['solution']}")
+        for s in r['steps']:
+            output.append(f"  - {s['command']}")
         output.append("")
     return "\n".join(output)
 
 
 @mcp.tool()
-def kb_save_case(title: str, panic_signature: str, root_cause: str, 
-                 solution: str = "") -> str:
-    """Save a new analysis case to knowledge base."""
-    from crash_mcp.kb.case_manager import get_case_manager
-    from crash_mcp.kb.models import AnalysisCase
-    import uuid
-    
-    case = AnalysisCase(
-        id=str(uuid.uuid4()),
-        title=title,
-        panic_signature=panic_signature,
-        kernel_version="",
-        root_cause=root_cause,
-        analysis_trace=[],
-        solution=solution
-    )
-    
-    manager = get_case_manager()
-    case_id = manager.save_case(case)
-    return f"Case saved: {case_id}"
+def kb_analyze_method(method_id: str) -> str:
+    """[L2] Execute Analysis Method and return structured context.
+    Returns JSON string with commands to run and expected outputs."""
+    retriever = get_layered_retriever(_get_methods_dir())
+    method_data = retriever.analyze_method(method_id)
+    return json.dumps(method_data, indent=2)
 
+
+@mcp.tool()
+def kb_search_subproblem(query: str, context: str) -> str:
+    """[L3] Search for sub-problems based on context. 
+    Context should be a JSON string of findings."""
+    try:
+        ctx_dict = json.loads(context)
+    except:
+        ctx_dict = {"raw": context}
+        
+    retriever = get_layered_retriever(_get_methods_dir())
+    hits = retriever.search_subproblem(query, ctx_dict)
+    
+    if not hits:
+        return "No known sub-problems found."
+        
+    return json.dumps(hits, indent=2)
+
+
+@mcp.tool()
+def kb_match_or_save_node(fingerprint: str, data: str) -> str:
+    """[L3] Match existing Case Node or save new one.
+    Data should be JSON string."""
+    try:
+        data_dict = json.loads(data)
+    except:
+        return "Error: Data must be valid JSON"
+        
+    retriever = get_layered_retriever(_get_methods_dir())
+    node_id = retriever.match_or_save_node(fingerprint, data_dict)
+    return f"Node Ref: {node_id}"
+
+
+@mcp.tool()
+def kb_run_workflow(panic_text: str, session_id: Optional[str] = None) -> str:
+    """[Workflow] Start/Continue analysis workflow. 
+    Stateful orchestration of the analysis loop."""
+    from crash_mcp.kb.workflow import quick_start
+    
+    res = quick_start(panic_text, methods_dir=_get_methods_dir())
+    return json.dumps(res, indent=2)
+
+# kb_update_workflow removed: Agent manages state directly via atomic tools
+
+@mcp.tool()
+def kb_mark_node_failed(node_id: str) -> str:
+    """[L3] Mark a case node as failed/dead-end for negative feedback."""
+    retriever = get_layered_retriever(_get_methods_dir())
+    success = retriever.mark_node_failed(node_id)
+    if success:
+        return f"Node {node_id} marked as failed."
+    return f"Error: Node {node_id} not found."
 
 def main():
     cli()

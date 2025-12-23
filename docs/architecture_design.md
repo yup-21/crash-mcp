@@ -119,22 +119,66 @@ Level 4: 通用分析方法
 | 分析方法描述 | 直接嵌入 |
 | 案例标题/根因 | 直接嵌入 |
 
-## 4. 工作流引擎
+## 4. LLM Agent 驱动设计
+
+Agent 采用 **LLM 原生状态管理**，通过调用原子化 KB 工具实现分析循环。服务端不维护复杂状态机。
+
+### 4.1 核心状态流
+
+1.  **Symptom Retrieval (特征检索)**
+    *   **Input**: `vmcore` 摘要 / Panic 字符串
+    *   **Action**: 调用 `kb_search_symptom(query="hung task")`
+    *   **Output**: 匹配的分析方法列表 (Method ID) 和初始置信度。
+
+2.  **Execution & Extraction (执行与提取)**
+    *   **Input**: `Method ID`
+    *   **Action**: 调用 `analyze_method(method_id)` 封装工具。
+        *   自动执行 YAML 定义的 `crash/drgn` 命令。
+        *   提取关键指标 (e.g., `rwsem_addr`, `pid`)。
+        *   保存临时上下文 (Context)。
+    *   **Output**: 结构化分析结果 (Findings)。
+
+3.  **Sub-problem Chain (子问题链检索)**
+    *   **Input**: 上一步的 Findings (上下文)
+    *   **Action**: 调用 `kb_search_subproblem(query="rwsem_blocked", context={"addr": "0xf123"})`。
+    *   **Logic**: 自动拆分复杂问题，例如从 "Hung Task" -> "RWSEM Blocked" -> "Disk I/O Wait"。
+    *   **Output**: 下一步的方法建议 (Next Method)。
+
+4.  **Case Matching & Enhancement (案例匹配与增强)**
+    *   **Input**: 当前累积的分析链路 (Chain) + 节点指纹
+    *   **Action**: 调用 `kb_match_or_save_node(fingerprint, chain_data)`。
+    *   **Logic**:
+        *   **Similarity > 0.8**: 判定为已知案例，执行 **Merge Evidence** (合并证据，增加权重)。
+        *   **Otherwise**: 判定为新发现，执行 **New Node Creation** ，生成新指纹。
+    *   **Output**: 案例节点引用 (Node Ref)。
+
+5.  **Reporting (报告输出)**
+    *   **Output**: 完整分析链路报告 + 引用知识库节点 ID。
+
+### 4.2 Agent 工具集 API
+
+| 工具名 | 参数 | 描述 |
+|---|---|---|
+| `kb_search_symptom` | `query`: string | 检索 L1 症状库，返回分析方法入口。 |
+| `kb_analyze_method` | `method_id`: string | 获取 L2 标准分析方法的执行上下文。 |
+| `kb_search_subproblem` | `query`: string, `context`: dict | 基于上下文检索 L3 案例库子树，推荐下一步。 |
+| `kb_match_or_save_node` | `fingerprint`: string, `data`: dict | 案例库写操作：高相似度合并，低相似度新建。 |
+| `kb_mark_node_failed` | `node_id`: string | 标记节点为失败路径 (负反馈)。 |
+| `kb_run_workflow` | `panic_text`: string | 快速启动：自动执行 L1 搜索并返回首个方法。 |
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ExtractPanic: 开始分析
-    ExtractPanic --> SearchMethod: 提取 panic 特征
-    SearchMethod --> ExecuteMethod: 匹配到方法
-    SearchMethod --> ManualAnalysis: 无匹配
-    ExecuteMethod --> AnalyzeOutput: 执行分析步骤
-    AnalyzeOutput --> SearchMethod: 发现新问题
-    AnalyzeOutput --> SearchCase: 分析完成
-    SearchCase --> EnhanceCase: 匹配已知案例
-    SearchCase --> SaveNewCase: 新案例
-    EnhanceCase --> [*]
-    SaveNewCase --> [*]
-    ManualAnalysis --> SaveNewCase
+    [*] --> SymptomSearch: vmcore summary
+    SymptomSearch --> ExecuteMethod: Method Found
+    
+    state AnalysisLoop {
+        ExecuteMethod --> SubProblemSearch: Extract Findings
+        SubProblemSearch --> MatchSave: Suggest Next
+        MatchSave --> ExecuteMethod: Next Method
+        MatchSave --> Report: No more steps
+    }
+    
+    Report --> [*]
 ```
 
 ## 5. 存储方案选型
@@ -153,33 +197,37 @@ crash-mcp/
 ├── src/crash_mcp/
 │   ├── kb/                     # 知识库模块
 │   │   ├── __init__.py
-│   │   ├── models.py           # 数据模型
-│   │   ├── retriever.py        # 检索器
-│   │   ├── vectorstore.py      # 向量存储
-│   │   └── workflow.py         # 工作流引擎
+│   │   ├── models.py           # 数据模型 (CaseNode, AnalysisMethod)
+│   │   ├── layered_retriever.py # 统一检索器 (L1/L2/L3)
+│   │   ├── simple_retriever.py # [已废弃] 简单检索器
+│   │   ├── case_manager.py     # 案例持久化
+│   │   └── workflow.py         # 快速启动辅助函数
+│   ├── config.py               # 配置 (阈值、模型)
 │   └── server.py
 ├── knowledge/                  # 知识资产
 │   ├── methods/                # 分析方法 (YAML)
-│   │   ├── hung_task.yaml
-│   │   ├── rwsem.yaml
-│   │   └── mutex.yaml
-│   ├── scripts/                # 分析脚本
-│   │   ├── drgn/
-│   │   └── crash/
-│   └── cases/                  # 案例库 (自动生成)
+│   └── cases/                  # 案例库 (JSON)
 └── data/
-    ├── chroma/                 # 向量数据库
-    └── kb.db                   # SQLite 元数据
+    └── chroma/                 # 向量数据库
 ```
 
 ## 7. 新增 MCP 工具
 
 | 工具 | 说明 |
 |------|------|
-| `kb_search_method` | 根据 panic 特征检索分析方法 |
-| `kb_search_case` | 检索相似案例 |
-| `kb_save_case` | 保存/增强案例 |
-| `kb_run_workflow` | 执行分析工作流 |
+| `kb_search_symptom` | L1 语义+关键词检索方法 |
+| `analyze_method` | L2 获取方法执行上下文 |
+| `kb_search_subproblem` | L3 基于上下文搜索案例子树 |
+| `kb_match_or_save_node` | L3 案例节点匹配/创建 |
+| `kb_mark_node_failed` | L3 负反馈标记 |
+| `kb_run_workflow` | 快速启动辅助工具 |
+
+## 8. 配置项
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `KB_SIMILARITY_THRESHOLD` | `0.2` | 向量匹配阈值 (距离) |
+| `KB_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | 嵌入模型名称 |
 
 ## 8. 技术依赖
 

@@ -54,34 +54,77 @@ class CaseStep:
 
 
 @dataclass
+class CaseNode:
+    """案例树节点"""
+    id: str
+    fingerprint: str
+    finding_summary: str
+    method_used: str
+    children: List['CaseNode'] = field(default_factory=list)
+    solution: str = ""
+    hit_count: int = 1
+    failure_count: int = 0
+    
+    def to_dict(self) -> Dict:
+        return {
+            'id': self.id,
+            'fingerprint': self.fingerprint,
+            'finding_summary': self.finding_summary,
+            'method_used': self.method_used,
+            'children': [c.to_dict() for c in self.children],
+            'solution': self.solution,
+            'hit_count': self.hit_count,
+            'failure_count': self.failure_count
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'CaseNode':
+        children = [cls.from_dict(c) for c in data.get('children', [])]
+        return cls(
+            id=data['id'],
+            fingerprint=data['fingerprint'],
+            finding_summary=data['finding_summary'],
+            method_used=data['method_used'],
+            children=children,
+            solution=data.get('solution', ''),
+            hit_count=data.get('hit_count', 1),
+            failure_count=data.get('failure_count', 0)
+        )
+
+
+@dataclass
 class AnalysisCase:
-    """分析案例"""
+    """分析案例 (支持树状结构)"""
     id: str
     title: str
     panic_signature: str
     kernel_version: str
     root_cause: str
-    analysis_trace: List[CaseStep]
-    solution: str
+    root_node: Optional[CaseNode] = None  # New: Tree Root
+    analysis_trace: List[CaseStep] = field(default_factory=list) # Keep for backward compat
+    solution: str = ""
     confidence: float = 0.5
     hit_count: int = 0
     
     def to_dict(self) -> Dict:
-        return {
+        data = {
             'id': self.id,
             'title': self.title,
             'panic_signature': self.panic_signature,
             'kernel_version': self.kernel_version,
             'root_cause': self.root_cause,
-            'analysis_trace': [
+            'solution': self.solution,
+            'confidence': self.confidence,
+            'hit_count': self.hit_count,
+            'analysis_trace': [     # Backward compat
                 {'step_id': s.step_id, 'method_id': s.method_id, 
                  'findings': s.findings, 'next_step': s.next_step}
                 for s in self.analysis_trace
-            ],
-            'solution': self.solution,
-            'confidence': self.confidence,
-            'hit_count': self.hit_count
+            ]
         }
+        if self.root_node:
+            data['root_node'] = self.root_node.to_dict()
+        return data
 
 
 class MethodLoader:
