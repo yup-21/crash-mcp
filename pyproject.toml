@@ -18,7 +18,6 @@ dependencies = [
 
 [project.scripts]
 crash-mcp = "crash_mcp.server:main"
-web-auth-mcp = "crash_mcp.server:main"  # Alias for compatibility if needed
 
 [build-system]
 requires = ["hatchling"]
