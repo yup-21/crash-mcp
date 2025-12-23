@@ -292,8 +292,8 @@ def get_sys_info(session_id: Optional[str] = None) -> str:
     return run_crash_command("sys", session_id)
 
 def main():
-    # mcp.run() # Old
-    pass
+    cli()
+
 
 @click.command()
 @click.option('--transport', type=click.Choice(['stdio', 'sse']), default='stdio', help='Transport mode')
