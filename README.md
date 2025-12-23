@@ -2,112 +2,105 @@
 
 这是一个基于 MCP (Model Context Protocol) 的服务器，专门用于辅助 **系统崩溃转储 (Crash Dump)** 的分析。
 
-它封装了 Linux 的 `crash` 实用程序，允许 AI 助手通过 MCP 协议自动发现转储文件、匹配内核、并执行交互式崩溃分析命令。
+它集成了 Linux 的 `crash` 实用程序和 `drgn` 可编程调试器，提供统一的分析接口，支持本地和远程分析。
 
 ## 功能特性 (Features)
 
-1.  **自动发现转储文件**:
-    - 能够扫描指定目录（默认 `/var/crash`）下的 `vmcore`、`core` 等转储文件。
-2.  **智能内核匹配**:
-    - 尝试自动寻找与转储文件匹配的 `vmlinux` 内核文件（支持同目录查找）。
-3.  **交互式 Crash 会话**:
-    - 通过 `pexpect` 管理 `crash` 工具的交互式会话。
-    - 支持长时间运行的会话，保持上下文。
-4.  **MCP 工具集**:
-    - `list_crash_dumps`: 列出可用的转储文件。
-    - `start_crash_session`:启动一个新的分析会话。
-    - `run_crash_command`: 在当前会话中执行任意 `crash` 命令 (如 `sys`, `bt`, `ps` 等)。
-    - `get_sys_info`: 获取系统基本信息的快捷工具。
-5.  **配置灵活**:
-    - 支持通过 `.env` 文件配置分析路径。
+1.  **统一智能会话 (Unified Smart Session)**:
+    - 同时启动 `crash` 和 `drgn` 引擎。
+    - **智能路由**: 自动将命令分发给合适的引擎。
+        - 常用命令 (`sys`, `bt`, `ps`) -> **Crash**
+        - Python 代码 / API (`prog`, `find_task`) -> **Drgn**
+        - 支持显式前缀: `crash: help`, `drgn: list(prog.tasks())`
+2.  **远程分析 (Remote Execution)**:
+    - 支持通过 SSH 连接远程主机进行分析。
+    - 无需下载巨大的 `vmcore` 文件到本地。
+3.  **多传输模式 (Transport Modes)**:
+    - **Stdio**: 标准输入输出模式（默认）。
+    - **SSE**: Server-Sent Events HTTP 模式，支持流式传输。
+4.  **自动发现**:
+    - 自动扫描指定目录（默认 `/var/crash`）下的转储文件。
+    - 自动匹配 `vmlinux` 内核文件。
 
-
-## 安装与使用 (Installation & Usage)
-
-### 前置要求
-- 系统需安装 Python 3.10+
-- 系统需安装 `crash` 工具 (用于实际分析)
-- 系统需安装 `pip` (Python 包管理器)
-
-## 安装与使用 (Installation & Usage)
+## 安装 (Installation)
 
 ### 前置要求
-- 系统需安装 Python 3.10+
-- 系统需安装 `crash` 工具 (用于实际分析)
-- 建议使用 Linux 环境 (Debian/Ubuntu)
+- Python 3.10+
+- `crash` 工具 (目标主机需安装)
+- `drgn` 工具 (目标主机需安装, 可选但推荐)
+- SSH 客户端 (如果使用远程分析)
 
-### 1. 快速安装 (推荐)
-
-我们提供了一个脚本来自动创建虚拟环境 (venv) 并安装依赖：
+### 快速安装
 
 ```bash
-# 添加执行权限
+# 运行安装脚本 (自动创建 venv 并安装依赖)
 chmod +x install.sh
-
-# 运行安装脚本
 ./install.sh
 ```
-> **注意**: 如果脚本提示缺少 `python3-venv`，请按提示安装：`sudo apt install python3-venv`
 
-### 2. 手动安装 (Manual Install)
-
-如果你更喜欢手动操作：
+### 手动安装
 
 ```bash
-# 1. 创建虚拟环境
 python3 -m venv venv
-
-# 2. 激活环境
 source venv/bin/activate
-
-# 3. 安装依赖
 pip install -e .
 ```
 
-### 3. 配置
+## 使用指南 (Usage)
 
-你可以复制示例配置文件并进行修改：
+### 1. 启动服务器
+
+**标准模式 (Stdio)** - *配合 Claude Desktop 或其他本地 LLM 客户端*:
 ```bash
-cp .env.example .env
-```
-主要配置项：
-- `CRASH_SEARCH_PATH`: 崩溃转储文件的搜索路径（默认 `/var/crash`）。
-
-### 4. 运行服务器
-
-**命令行运行:**
-```bash
-# 先激活虚拟环境
-source venv/bin/activate
-
-# 启动服务器
 crash-mcp
 ```
 
-**在 Claude Desktop 中配置:**
-在 `mcpServers` 配置中，直接指定虚拟环境中的 python 解释器路径：
-
-```json
-{
-  "mcpServers": {
-    "crash-analysis": {
-      "command": "/path/to/your/crash-mcp/venv/bin/python",
-      "args": ["-m", "crash_mcp.server"],
-      "cwd": "/path/to/your/crash-mcp",
-      "env": {
-        "CRASH_SEARCH_PATH": "/var/crash"
-      }
-    }
-  }
-}
-```
-
-## 开发与测试
-
-运行单元测试：
+**SSE 模式 (HTTP)** - *配合远程客户端或 Web UI*:
 ```bash
-# 需要安装 test 依赖 (pytest)
-pip install pytest
-pytest
+crash-mcp --transport sse --port 8000
 ```
-项目包含一个 `mock_crash.py` 脚本，用于在没有真实 `crash` 工具的环境下测试交互逻辑。
+
+### 2. MCP 工具集
+
+AI 助手可以使用以下工具：
+
+- **`analyze_target(vmcore, vmlinux, ssh_host=None, ssh_user=None)`**:
+    - 启动一个统一分析会话。
+    - **本地分析**: 提供本地文件路径。
+    - **远程分析**: 提供 `ssh_host` 和 `ssh_user`，以及**远程主机上**的文件路径。
+- **`run_command(command, session_id)`**:
+    - 执行分析命令。
+    - 示例: `bt` (由 crash 执行), `prog['init_task']` (由 drgn 执行).
+- **`list_crash_dumps()`**: 扫描本地转储文件。
+
+### 3. 配置
+
+复制 `.env.example` 到 `.env` 进行配置：
+```bash
+cp .env.example .env
+```
+- `CRASH_SEARCH_PATH`: 本地搜寻转储文件的路径。
+- `LOG_LEVEL`: 日志级别 (INFO/DEBUG)。
+
+## 示例 (Examples)
+
+**场景 1: 本地分析**
+```python
+# 启动会话
+analyze_target("/var/crash/127.0.0.1/vmcore", "/usr/lib/debug/vmlinux")
+
+# 执行命令 (自动路由)
+run_command("bt")                  # -> Crash: 打印堆栈
+run_command("len(list(prog.tasks()))") # -> Drgn: 计算进程数
+```
+
+**场景 2: 远程分析**
+```python
+# 连接远程主机 server-01
+analyze_target("/var/crash/vmcore", "/usr/lib/debug/vmlinux", 
+               ssh_host="server-01", ssh_user="root")
+```
+
+## 许可证 (License)
+
+[MIT License](LICENSE)
