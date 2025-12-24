@@ -11,12 +11,13 @@ class CrashSession:
     PROMPT = r'crash> '
 
     def __init__(self, dump_path: str, kernel_path: str = None, binary_path: str = 'crash',
-                 remote_host: str = None, remote_user: str = None):
+                 remote_host: str = None, remote_user: str = None, crash_args: list = None):
         self.dump_path = dump_path
         self.kernel_path = kernel_path
         self.binary_path = binary_path
         self.remote_host = remote_host
         self.remote_user = remote_user
+        self.crash_args = crash_args or []  # Extra args like ['-s', '--mod', '/path']
         self._process = None
 
 
@@ -25,6 +26,8 @@ class CrashSession:
         Starts the crash session.
         """
         args = []
+        # Add custom crash args first
+        args.extend(self.crash_args)
         if self.kernel_path:
             args.append(self.kernel_path)
         args.append(self.dump_path)

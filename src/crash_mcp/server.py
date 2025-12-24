@@ -67,20 +67,33 @@ def list_crash_dumps(search_path: str = Config.CRASH_SEARCH_PATH) -> str:
 
 @mcp.tool()
 def start_session(vmcore_path: str, vmlinux_path: str, 
-                  ssh_host: Optional[str] = None, ssh_user: Optional[str] = None) -> str:
-    """Starts analysis session. Requires vmcore and vmlinux paths. Returns session ID."""
+                  ssh_host: Optional[str] = None, ssh_user: Optional[str] = None,
+                  crash_args: Optional[str] = None) -> str:
+    """Starts analysis session. Requires vmcore and vmlinux paths. Returns session ID.
+    
+    Args:
+        vmcore_path: Path to vmcore dump file
+        vmlinux_path: Path to vmlinux with debug symbols
+        ssh_host: Optional remote host for SSH connection
+        ssh_user: Optional SSH username
+        crash_args: Optional extra crash args as comma-separated string (e.g. "-s,--mod,/path")
+    """
     global last_session_id
+    
+    # Parse crash_args from comma-separated string to list
+    args_list = crash_args.split(',') if crash_args else []
     
     # Validation
     if not ssh_host and not os.path.exists(vmcore_path):
         return f"Error: Dump file not found locally at {vmcore_path} and no remote host specified."
 
     session_id = str(uuid.uuid4())
-    logger.info(f"Starting Session {session_id} for {vmcore_path} (Remote: {ssh_host})")
+    logger.info(f"Starting Session {session_id} for {vmcore_path} (Remote: {ssh_host}, Args: {args_list})")
     
     try:
         session = UnifiedSession(vmcore_path, vmlinux_path, 
-                               remote_host=ssh_host, remote_user=ssh_user)
+                               remote_host=ssh_host, remote_user=ssh_user,
+                               crash_args=args_list)
         session.start()
         
         sessions[session_id] = session

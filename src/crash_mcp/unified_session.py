@@ -12,17 +12,20 @@ class UnifiedSession:
     Manages both CrashSession and DrgnSession, automatically routing commands.
     """
     def __init__(self, dump_path: str, kernel_path: str = None, 
-                 remote_host: str = None, remote_user: str = None):
+                 remote_host: str = None, remote_user: str = None,
+                 crash_args: list = None):
         self.dump_path = dump_path
         self.kernel_path = kernel_path
         self.remote_host = remote_host
         self.remote_user = remote_user
+        self.crash_args = crash_args or []
         
         # Initialize sub-sessions
         # They are lazy-started conceptually, but we might as well start them together 
         # since "analyze_target" usually implies ready-to-go.
         self.crash_session = CrashSession(dump_path, kernel_path, 
-                                        remote_host=remote_host, remote_user=remote_user)
+                                        remote_host=remote_host, remote_user=remote_user,
+                                        crash_args=self.crash_args)
         self.drgn_session = DrgnSession(dump_path, kernel_path, 
                                         remote_host=remote_host, remote_user=remote_user)
         
