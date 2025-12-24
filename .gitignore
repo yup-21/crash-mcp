@@ -36,3 +36,4 @@ tests/crash_data/
 data/
 knowledge/cases/
 *.log
+*.whl

@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 # Lazy imports
 _chromadb = None
-_embedder = None
 
 def _init_chroma():
     global _chromadb
@@ -25,17 +24,6 @@ def _init_chroma():
             logger.warning("chromadb not installed")
             return None
     return _chromadb
-
-def _init_embedder():
-    global _embedder
-    if _embedder is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            _embedder = SentenceTransformer(Config.KB_EMBEDDING_MODEL)
-        except ImportError:
-            logger.warning("sentence-transformers not installed")
-            return None
-    return _embedder
 
 class LayeredRetriever:
     """Implements 3-Layer Retrieval Strategy: Symptom (L1) -> Method (L2) -> Case (L3)"""
@@ -118,7 +106,7 @@ class LayeredRetriever:
                             'steps': [{'command': s.command} for s in method.steps]
                         })
 
-        # 2. Keywork/Regex Fallback (using SimpleRetriever logic)
+        # 2. Keyword/Regex Fallback (using SimpleRetriever logic)
         simple_res = self.simple_retriever.search_method(query, top_k)
         for res in simple_res:
              # Dedup
@@ -246,9 +234,18 @@ class LayeredRetriever:
 
 # Global instance
 _layered_retriever = None
+_layered_retriever_key = None
 
 def get_layered_retriever(methods_dir: str = "knowledge/methods", data_dir: str = "data/chroma") -> LayeredRetriever:
-    global _layered_retriever
-    if _layered_retriever is None:
+    """Get or create LayeredRetriever singleton.
+    
+    Note: If called with different paths after initial creation, 
+    the retriever will be re-initialized.
+    """
+    global _layered_retriever, _layered_retriever_key
+    
+    key = (methods_dir, data_dir)
+    if _layered_retriever is None or _layered_retriever_key != key:
         _layered_retriever = LayeredRetriever(methods_dir, persist_dir=data_dir)
+        _layered_retriever_key = key
     return _layered_retriever
