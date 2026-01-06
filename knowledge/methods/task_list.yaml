@@ -1,0 +1,48 @@
+id: task_list_analysis
+name: 任务列表分析
+triggers:
+  - pattern: "task"
+  - pattern: "process"
+  - pattern: "pid"
+  - pattern: "ps"
+description: |
+  列出和过滤系统任务。
+  支持按状态和进程名过滤。
+
+steps:
+  - order: 1
+    command: "drgn:task_list.py"
+    purpose: 使用 drgn 遍历任务列表
+    params:
+      - name: state_char
+        description: "状态过滤: D=不可中断, R=运行, S=可中断"
+      - name: comm_filter
+        description: 进程名过滤 (可选)
+  - order: 2
+    command: "crash:ps"
+    purpose: 查看所有进程
+  - order: 3
+    command: "crash:ps | grep UN"
+    purpose: 过滤 D 状态进程
+
+outputs:
+  - name: task_list
+    description: 任务列表 (PID, COMM, STATE)
+  - name: task_count
+    description: 匹配任务数量
+
+next_methods:
+  - condition: "D state"
+    method_id: hung_task_analysis
+  - condition: "blocked"
+    method_id: stack_trace_analysis
+
+tags:
+  - task
+  - process
+  - listing
+  - filter
+
+script_asset:
+  type: drgn_script
+  file: task_list.py

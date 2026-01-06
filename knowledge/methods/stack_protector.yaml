@@ -1,0 +1,39 @@
+id: stack_protector_analysis
+name: Stack Protector 分析
+triggers:
+  - pattern: "stack-protector"
+  - pattern: "Kernel stack is corrupted"
+  - pattern: "__stack_chk_fail"
+description: |
+  分析内核栈溢出/损坏问题。
+  识别导致栈损坏的函数。
+
+steps:
+  - order: 1
+    command: "crash:bt"
+    purpose: 查看崩溃堆栈
+  - order: 2
+    command: "crash:dis -l <function>"
+    purpose: 反汇编问题函数
+  - order: 3
+    command: "crash:struct thread_info <addr>"
+    purpose: 检查线程栈信息
+
+outputs:
+  - name: corrupted_function
+    description: 导致栈损坏的函数
+  - name: stack_overflow
+    description: 是否栈溢出
+  - name: canary_value
+    description: Stack canary 值
+
+next_methods:
+  - condition: "buffer_overflow"
+    method_id: slab_analysis
+
+tags:
+  - stack
+  - overflow
+  - corruption
+  - memory
+  - crash

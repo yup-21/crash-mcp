@@ -1,0 +1,53 @@
+id: panic_info_analysis
+name: Panic/Oops 信息分析
+triggers:
+  - pattern: "kernel panic"
+  - pattern: "Oops"
+  - pattern: "BUG:"
+  - pattern: "RIP:"
+  - pattern: "Unable to handle"
+description: |
+  分析内核 Panic/Oops 信息。
+  提取 RIP、发生函数、崩溃原因等关键信息。
+
+steps:
+  - order: 1
+    command: "crash:bt"
+    purpose: 获取崩溃时的调用栈
+  - order: 2
+    command: "crash:log | grep -A 30 'kernel panic\\|Oops\\|BUG:'"
+    purpose: 从日志提取 panic 上下文
+  - order: 3
+    command: "crash:dis -l <rip>"
+    purpose: 反汇编崩溃点指令
+  - order: 4
+    command: "drgn:panic_info.py"
+    purpose: 使用 drgn 提取结构化 panic 信息
+
+outputs:
+  - name: panic_type
+    description: Panic 类型 (Oops, BUG, Kernel Panic)
+  - name: rip
+    description: 崩溃时的 RIP 地址
+  - name: failing_function
+    description: 发生故障的函数
+  - name: cause
+    description: 推断的崩溃原因
+
+next_methods:
+  - condition: "null_ptr"
+    method_id: null_ptr_analysis
+  - condition: "use_after_free"
+    method_id: slab_analysis
+  - condition: "stack_protector"
+    method_id: stack_protector_analysis
+
+tags:
+  - panic
+  - oops
+  - crash
+  - fault
+
+script_asset:
+  type: drgn_script
+  file: panic_info.py

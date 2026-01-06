@@ -1,0 +1,71 @@
+id: mutex_analysis
+name: Mutex 分析
+triggers:
+  - pattern: "mutex"
+  - pattern: "__mutex_lock"
+  - pattern: "mutex_lock_slowpath"
+  - pattern: "mutex_lock_killable"
+  - pattern: "mutex_lock_interruptible"
+description: |
+  分析互斥锁竞争和死锁。
+  识别锁持有者和等待者。
+
+params:
+  - name: lock_addr
+    type: hex
+    description: mutex 结构体地址 (如 0xffff...)
+    required: true
+    source: "从 bt 堆栈参数或 D 状态进程分析获取"
+
+steps:
+  - order: 1
+    command: "crash:ps | grep UN"
+    purpose: 查找 D 状态进程，定位可能等待 mutex 的进程
+    
+  - order: 2
+    command: "crash:bt <pid>"
+    purpose: 查看 D 状态进程堆栈，从 mutex_lock 参数获取锁地址
+    extract:
+      - field: lock_addr
+        pattern: "mutex_lock.*\\(([0-9a-fx]+)\\)"
+        
+  - order: 3
+    command: "drgn:lock_mutex.py"
+    purpose: 解析 mutex 结构体，获取 owner 和 wait_list
+    params:
+      lock_addr: "<lock_addr>"
+    extract:
+      - field: owner_pid
+        pattern: "\\[PID (\\d+)\\]"
+      - field: owner_comm
+        pattern: "\\[PID \\d+\\] (\\S+)"
+        
+  - order: 4
+    command: "crash:bt <owner_pid>"
+    purpose: 查看持锁者堆栈
+
+outputs:
+  - name: owner_task
+    description: 锁持有者 (PID, comm, addr)
+  - name: waiters
+    description: 等待者列表
+  - name: lock_state
+    description: 锁状态
+
+next_methods:
+  - condition: "rwsem"
+    method_id: rwsem_analysis
+  - condition: "spinlock"
+    method_id: spinlock_analysis
+
+tags:
+  - lock
+  - mutex
+  - synchronization
+  - blocking
+
+script_asset:
+  type: drgn_script
+  file: lock_mutex.py
+  params:
+    - lock_addr

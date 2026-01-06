@@ -1,0 +1,72 @@
+id: rwsem_analysis
+name: RW Semaphore 分析
+triggers:
+  - pattern: "rwsem"
+  - pattern: "rw_semaphore"
+  - pattern: "down_read"
+  - pattern: "down_write"
+  - pattern: "rwsem_down_read_slowpath"
+  - pattern: "rwsem_down_write_slowpath"
+description: |
+  分析读写信号量竞争和死锁。
+  支持识别持锁者、等待者和锁状态。
+
+params:
+  - name: lock_addr
+    type: hex
+    description: rw_semaphore 结构体地址 (如 0xffff...)
+    required: true
+    source: "从 bt 堆栈参数或 D 状态进程分析获取"
+
+steps:
+  - order: 1
+    command: "crash:ps | grep UN"
+    purpose: 查找 D 状态进程，定位可能等待 rwsem 的进程
+    
+  - order: 2
+    command: "crash:bt <pid>"
+    purpose: 查看 D 状态进程堆栈，从 down_read/down_write 参数获取锁地址
+    extract:
+      - field: lock_addr
+        pattern: "down_(?:read|write).*\\(([0-9a-fx]+)\\)"
+        
+  - order: 3
+    command: "drgn:lock_rwsem.py"
+    purpose: 解析 rwsem 结构体，获取 owner 和 wait_list
+    params:
+      lock_addr: "<lock_addr>"
+    extract:
+      - field: owner_pid
+        pattern: "Owner:.*PID (\\d+)"
+      - field: waiter_count
+        pattern: "Waiters: (\\d+)"
+        
+  - order: 4
+    command: "crash:bt <owner_pid>"
+    purpose: 查看持锁者堆栈
+
+outputs:
+  - name: owner_task
+    description: 锁持有者 (PID, comm)
+  - name: waiter_count
+    description: 等待者数量
+  - name: lock_state
+    description: 锁状态 (read/write/unlocked)
+
+next_methods:
+  - condition: "mutex"
+    method_id: mutex_analysis
+  - condition: "spinlock"
+    method_id: spinlock_analysis
+
+tags:
+  - lock
+  - rwsem
+  - synchronization
+  - semaphore
+
+script_asset:
+  type: drgn_script
+  file: lock_rwsem.py
+  params:
+    - lock_addr

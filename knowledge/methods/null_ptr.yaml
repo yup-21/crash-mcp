@@ -1,0 +1,39 @@
+id: null_ptr_analysis
+name: 空指针解引用分析
+triggers:
+  - pattern: "NULL pointer dereference"
+  - pattern: "unable to handle kernel NULL"
+  - pattern: "BUG: unable to handle kernel paging request"
+  - pattern: "Oops: 0000"
+description: |
+  分析空指针解引用导致的内核崩溃。
+  识别崩溃点和空指针变量。
+
+steps:
+  - order: 1
+    command: "crash:bt"
+    purpose: 查看崩溃堆栈
+  - order: 2
+    command: "crash:dis -l <rip>"
+    purpose: 反汇编崩溃点
+  - order: 3
+    command: "crash:rd <addr>"
+    purpose: 读取相关内存
+
+outputs:
+  - name: crash_function
+    description: 崩溃发生的函数
+  - name: null_variable
+    description: 空指针变量
+  - name: rip
+    description: 崩溃时的指令地址
+
+next_methods:
+  - condition: "use_after_free"
+    method_id: slab_analysis
+
+tags:
+  - null_ptr
+  - oops
+  - memory
+  - crash

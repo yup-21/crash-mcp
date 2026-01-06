@@ -1,0 +1,44 @@
+id: softlockup_analysis
+name: Soft Lockup 分析
+triggers:
+  - pattern: "soft lockup"
+  - pattern: "softlockup"
+  - pattern: "BUG: soft lockup"
+  - pattern: "watchdog"
+  - pattern: "rcu_sched detected stall"
+description: |
+  分析 CPU 软死锁问题。
+  识别长时间占用 CPU 的任务。
+
+steps:
+  - order: 1
+    command: "crash:bt -a"
+    purpose: 查看所有 CPU 堆栈
+  - order: 2
+    command: "crash:runq"
+    purpose: 查看运行队列
+  - order: 3
+    command: "crash:foreach bt"
+    purpose: 查看所有任务堆栈
+
+outputs:
+  - name: locked_cpu
+    description: 发生 softlockup 的 CPU
+  - name: running_task
+    description: 长时间运行的任务
+  - name: lock_time
+    description: 占用时长
+
+next_methods:
+  - condition: "spinlock"
+    method_id: spinlock_analysis
+  - condition: "spin_lock"
+    method_id: spinlock_analysis
+  - condition: "rwlock"
+    method_id: rwsem_analysis
+
+tags:
+  - softlockup
+  - cpu
+  - watchdog
+  - rcu

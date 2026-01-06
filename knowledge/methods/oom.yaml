@@ -1,0 +1,44 @@
+id: oom_analysis
+name: OOM Killer 分析
+triggers:
+  - pattern: "Out of memory"
+  - pattern: "oom-kill"
+  - pattern: "oom_reaper"
+  - pattern: "Killed process"
+  - pattern: "invoked oom-killer"
+description: |
+  分析内存不足导致的 OOM 问题。
+  识别被杀进程和内存使用情况。
+
+steps:
+  - order: 1
+    command: "crash:log | grep -i oom"
+    purpose: 查看 OOM 相关日志
+  - order: 2
+    command: "crash:kmem -i"
+    purpose: 查看内存使用情况
+  - order: 3
+    command: "crash:ps -m"
+    purpose: 查看进程内存使用
+  - order: 4
+    command: "crash:vm"
+    purpose: 查看虚拟内存信息
+
+outputs:
+  - name: killed_process
+    description: 被 OOM Killer 杀死的进程
+  - name: memory_usage
+    description: 内存使用统计
+  - name: oom_score
+    description: OOM 评分
+
+next_methods:
+  - condition: "slab"
+    method_id: slab_analysis
+  - condition: "kmalloc"
+    method_id: slab_analysis
+
+tags:
+  - oom
+  - memory
+  - kill

@@ -1,0 +1,76 @@
+id: spinlock_analysis
+name: Spinlock 分析
+triggers:
+  - pattern: "spin_lock"
+  - pattern: "raw_spinlock"
+  - pattern: "_raw_spin_lock"
+  - pattern: "do_raw_spin_lock"
+  - pattern: "queued_spin_lock"
+description: |
+  分析 Spinlock 锁状态、持有者和等待者。
+  支持锁依赖检测，识别持锁任务和等待锁的任务。
+
+params:
+  - name: lock_addr
+    type: hex
+    description: spinlock_t 结构体地址 (如 0xffff...)
+    required: true
+    source: "从 bt/bt -a 堆栈参数或 panic 日志中获取"
+
+steps:
+  - order: 1
+    command: "crash:bt -a"
+    purpose: 查看所有 CPU 堆栈，从 spin_lock 调用参数获取锁地址
+    extract:
+      - field: lock_addr
+        pattern: "spin_lock.*\\(([0-9a-fx]+)\\)"
+        note: 从 spin_lock 函数参数中提取锁地址
+        
+  - order: 2
+    command: "crash:log | grep -E 'spin_lock|spinlock'"
+    purpose: 从 panic 日志中查找可能的锁地址
+    
+  - order: 3
+    command: "drgn:lock_spinlock.py"
+    purpose: 解析 spinlock 结构体，搜索栈中的锁引用，检测锁依赖
+    params:
+      lock_addr: "<lock_addr>"
+    extract:
+      - field: state
+        pattern: "\\| \\*\\*State\\*\\* \\| (\\w+)"
+      - field: holders
+        pattern: "Suspect Holders \\((\\d+)\\)"
+      - field: waiters
+        pattern: "True Waiters \\((\\d+)\\)"
+        
+  - order: 4
+    command: "crash:runq"
+    purpose: 查看运行队列以确定哪个 CPU 可能持有锁
+
+outputs:
+  - name: locked_val
+    description: 锁状态 (Locked/Unlocked)
+  - name: holders
+    description: 可疑持有者列表 (通过栈搜索)
+  - name: waiters
+    description: 等待者列表
+  - name: lock_deps
+    description: 锁依赖关系 (A持有目标锁等待B锁)
+
+next_methods:
+  - condition: "multi_cpu_contention"
+    method_id: softlockup_analysis
+  - condition: "lock_dependency"
+    method_id: hung_task_analysis
+
+tags:
+  - lock
+  - spinlock
+  - synchronization
+  - smp
+
+script_asset:
+  type: drgn_script
+  file: lock_spinlock.py
+  params:
+    - lock_addr

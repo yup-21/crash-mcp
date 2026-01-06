@@ -1,0 +1,46 @@
+id: memory_analysis
+name: 内存使用分析
+triggers:
+  - pattern: "memory"
+  - pattern: "vm_stat"
+  - pattern: "rss"
+  - pattern: "memory leak"
+  - pattern: "low memory"
+description: |
+  分析系统内存使用情况。
+  识别内存消耗最大的进程和整体内存状态。
+
+steps:
+  - order: 1
+    command: "drgn:memory.py"
+    purpose: 获取内存统计和 Top 内存消耗者
+  - order: 2
+    command: "crash:kmem -i"
+    purpose: 查看内核内存使用情况
+  - order: 3
+    command: "crash:ps -m"
+    purpose: 查看进程内存使用排序
+
+outputs:
+  - name: free_memory
+    description: 可用内存 (pages/MB)
+  - name: top_consumers
+    description: 内存消耗 Top 进程列表
+  - name: total_ram
+    description: 总内存
+
+next_methods:
+  - condition: "oom"
+    method_id: oom_analysis
+  - condition: "slab"
+    method_id: slab_analysis
+
+tags:
+  - memory
+  - usage
+  - rss
+  - statistics
+
+script_asset:
+  type: drgn_script
+  file: memory.py

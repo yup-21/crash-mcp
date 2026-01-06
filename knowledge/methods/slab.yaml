@@ -1,0 +1,46 @@
+id: slab_analysis
+name: Slab 内存分析
+triggers:
+  - pattern: "kmalloc"
+  - pattern: "slab"
+  - pattern: "kmem_cache"
+  - pattern: "SLUB"
+  - pattern: "kfree"
+description: |
+  分析 Slab 内存分配器状态。
+  用于排查内存泄漏、slab 耗尽等问题。
+
+steps:
+  - order: 1
+    command: "crash:kmem -s"
+    purpose: 显示 slab 缓存统计
+  - order: 2
+    command: "crash:kmem -S <slab_name>"
+    purpose: 显示特定 slab 的详细信息
+  - order: 3
+    command: "drgn:slab_dump.py"
+    purpose: 使用 drgn 进行深度 slab 分析
+
+outputs:
+  - name: slab_stats
+    description: Slab 缓存统计信息
+  - name: top_consumers
+    description: 内存消耗最大的 slab 缓存
+  - name: leak_suspects
+    description: 可疑的内存泄漏 slab
+
+next_methods:
+  - condition: "leak_detected"
+    method_id: memory_leak_analysis
+  - condition: "exhausted"
+    method_id: oom_analysis
+
+tags:
+  - memory
+  - slab
+  - kmalloc
+  - allocation
+
+script_asset:
+  type: drgn_script
+  file: slab_dump.py

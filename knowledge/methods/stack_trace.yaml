@@ -1,0 +1,48 @@
+id: stack_trace_analysis
+name: 调用栈分析
+triggers:
+  - pattern: "backtrace"
+  - pattern: "call trace"
+  - pattern: "blocked"
+  - pattern: "Call Trace"
+description: |
+  获取和分析进程调用栈。
+  识别阻塞点和锁等待。
+
+steps:
+  - order: 1
+    command: "crash:bt <pid>"
+    purpose: 获取进程基础调用栈
+  - order: 2
+    command: "crash:bt -f <pid>"
+    purpose: 获取带帧指针的详细调用栈
+  - order: 3
+    command: "drgn:stack_trace.py"
+    purpose: 使用 drgn 获取带参数的调用栈
+
+outputs:
+  - name: frames
+    description: 调用帧列表
+  - name: blocked_at
+    description: 阻塞函数 (如有)
+  - name: lock_address
+    description: 相关锁地址 (如有)
+
+next_methods:
+  - condition: "mutex_lock"
+    method_id: mutex_analysis
+  - condition: "rwsem"
+    method_id: rwsem_analysis
+  - condition: "spinlock"
+    method_id: spinlock_analysis
+  - condition: "spin_lock"
+    method_id: spinlock_analysis
+
+tags:
+  - stack
+  - backtrace
+  - debugging
+
+script_asset:
+  type: drgn_script
+  file: stack_trace.py
