@@ -24,8 +24,8 @@ def register_all_tools(mcp: FastMCP):
     工具分组:
     - Session Management (6个): list_crash_dumps, start_session, stop_session, 
                                 run_crash_command, run_drgn_command, get_sys_info
-    - Knowledge Base (6个): kb_search_symptom, kb_analyze_method, kb_search_subproblem,
-                           kb_match_or_save_node, kb_run_workflow, kb_mark_node_failed
+    - Knowledge Base (5个): kb_recommend_method, kb_get_method_guide, kb_find_similar_findings,
+                           kb_record_finding, kb_quick_start
     """
     from crash_mcp.tools import session_mgmt
     session_mgmt.register(mcp)
@@ -42,7 +42,12 @@ def register_all_tools(mcp: FastMCP):
 
 def create_mcp_server() -> FastMCP:
     """Create and configure MCP server."""
-    mcp = FastMCP("crash-mcp")
+    from crash_mcp.prompts import get_system_prompt
+    
+    mcp = FastMCP(
+        name="crash-mcp",
+        instructions=get_system_prompt()  # Auto-inject system prompt to clients
+    )
     register_all_tools(mcp)
     return mcp
 

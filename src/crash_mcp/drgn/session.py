@@ -80,8 +80,42 @@ class DrgnSession(BaseSession):
             raise RuntimeError("Drgn session is not active")
             
         # [Ported Feature] Automatically use run_script for multi-line commands
-        if '\n' in command.strip():
-            return self.run_script(command)
+        # [Ported Feature] Automatically use run_script for multi-line commands
+        stripped_cmd = command.strip()
+        
+        # 1. Check if it's a file path (ends with .py)
+        if stripped_cmd.endswith('.py') and not '\n' in stripped_cmd:
+            script_path = stripped_cmd
+            # If not absolute, try to resolve
+            if not os.path.isabs(script_path):
+                # Try 1: CWD
+                if os.path.exists(script_path):
+                    pass # path is valid relative to CWD
+                else:
+                    # Try 2: Knowledge Base Scripts (Standard Location)
+                    # We assume project root is 4 levels up: src/crash_mcp/drgn/session.py -> ... -> ROOT
+                    # Or safer: use Config if possible, but importing Config here might be circular? No.
+                    try:
+                        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                        kb_script_path = os.path.join(project_root, 'knowledge', 'scripts', 'drgn', script_path)
+                        if os.path.exists(kb_script_path):
+                            script_path = kb_script_path
+                            logger.info(f"Resolved drgn script from KB: {script_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to resolve script path: {e}")
+
+            if os.path.exists(script_path):
+                try:
+                    with open(script_path, 'r') as f:
+                        script_content = f.read()
+                    logger.info(f"Executing drgn script from file: {script_path}")
+                    return self.run_script(script_content)
+                except Exception as e:
+                    return f"Error reading script file {script_path}: {e}"
+
+        # 2. Multi-line command -> run_script (base64)
+        if '\n' in stripped_cmd:
+            return self.run_script(stripped_cmd)
             
         self._process.sendline(command)
         self._process.expect(self.PROMPT, timeout=timeout)

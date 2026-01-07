@@ -123,17 +123,30 @@ class LayeredRetriever:
         """Layer 2: Get specific method"""
         return self.loader.get(method_id)
 
-    def analyze_method(self, method_id: str) -> Dict:
-        """Layer 2: wrapper to return method details for Agent execution"""
+    def analyze_method(self, method_id: str, include_next: bool = False) -> Dict:
+        """Layer 2: wrapper to return method details for Agent execution
+        
+        Args:
+            method_id: Method ID to retrieve
+            include_next: If True, include next_methods suggestions
+        """
         method = self.get_method(method_id)
         if not method:
             return {"error": f"Method {method_id} not found"}
         
-        return {
+        result = {
             "id": method.id,
             "commands": [s.command for s in method.steps],
             "outputs": [o.get('name') for o in method.outputs]
         }
+        
+        if include_next and method.next_methods:
+            result["next_methods"] = [
+                {"condition": nm.get('condition'), "method_id": nm.get('method_id')}
+                for nm in method.next_methods
+            ]
+        
+        return result
 
     def search_subproblem(self, query: str, context: Dict[str, Any], top_k: int = 3) -> List[Dict]:
         """Layer 3: Search for partial case trees / sub-problems"""

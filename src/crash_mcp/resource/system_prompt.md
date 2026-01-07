@@ -8,7 +8,11 @@
 
 1. **工具优先**: 使用 MCP 工具交互，禁止凭空猜测
 2. **知识驱动**: 优先检索知识库 (KB)
-3. **迭代诊断**: 发现新线索时再次搜索 KB
+3. **执行命令**: 执行 `kb_get_method_guide` 返回的命令列表
+    - `crash:cmd` -> `run_crash_command("cmd")`
+    - `drgn:script.py` -> 获取脚本`kb_get_script("script.py")`
+                        -> 执行脚本`run_drgn_command("/path/to/script.py")`
+4. **迭代诊断**: 发现新线索时再次搜索 KB
 
 ---
 
@@ -27,12 +31,11 @@
 ### 知识库 (8个)
 | 工具 | 用途 |
 |:---|:---|
-| `kb_search_symptom` | 搜索症状库 |
-| `kb_analyze_method` | 获取分析方法 |
-| `kb_search_subproblem` | 搜索子问题 |
-| `kb_match_or_save_node` | 匹配/保存节点 |
-| `kb_run_workflow` | 运行分析工作流 |
-| `kb_mark_node_failed` | 标记失败节点 |
+| `kb_recommend_method` | [L1] 输入症状，推荐分析协议 |
+| `kb_get_method_guide` | [L2] 获取分析步骤 (可选 include_next 获取后续建议) |
+| `kb_search_history` | [L3] 搜索历史案例/发现 |
+| `kb_quick_start` | [Workflow] 快速启动：自动执行L1搜索并返回首个方法 |
+| `kb_save_pending` | [Write] 保存新发现的method/case/script到待审核区 |
 | `kb_list_scripts` | 列出辅助分析脚本 |
 | `kb_get_script` | 获取脚本具体代码 |
 
@@ -65,10 +68,12 @@ run_crash_command("bt")      # 当前堆栈
 
 ### 3. 知识检索
 ```
-kb_search_symptom("hung task blocked")
-kb_search_symptom("softlockup")
-kb_search_symptom("null pointer dereference")
-kb_analyze_method("method_id")
+kb_recommend_method("hung task blocked")
+kb_recommend_method("softlockup")
+kb_recommend_method("null pointer dereference")
+
+# 获取具体指南
+kb_get_method_guide("method_id")
 ```
 
 ### 4. 深入分析

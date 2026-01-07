@@ -191,4 +191,4 @@ def register(mcp: FastMCP):
     mcp.tool()(run_crash_command)
     mcp.tool()(run_drgn_command)
     mcp.tool()(stop_session)
-    mcp.tool()(get_sys_info)
+    # mcp.tool()(get_sys_info)  # Hidden: too simple, use run_crash_command("sys") instead

@@ -83,12 +83,11 @@ crash-mcp --transport sse --port 8000
 **Knowledge Base 工具**:
 | 工具 | 说明 |
 |------|------|
-| `kb_search_symptom` | L1 语义搜索匹配分析方法 |
-| `kb_analyze_method` | L2 获取方法执行上下文 |
-| `kb_search_subproblem` | L3 基于上下文搜索案例子树 |
-| `kb_match_or_save_node` | L3 案例节点匹配/创建 |
-| `kb_mark_node_failed` | L3 负反馈标记 |
-| `kb_run_workflow` | 快速启动分析工作流 |
+| `kb_recommend_method` | [L1] 输入症状，推荐分析协议 |
+| `kb_get_method_guide` | [L2] 获取具体的分析步骤指南 |
+| `kb_find_similar_findings` | [L3] 查找相似的历史发现/子问题 |
+| `kb_record_finding` | [L3] 记录/保存新的发现 |
+| `kb_quick_start` | [Workflow] 快速启动：自动执行L1搜索并返回首个方法 |
 | `kb_list_scripts` | 列出辅助分析脚本 |
 | `kb_get_script` | 获取脚本具体代码 |
 
