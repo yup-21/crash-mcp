@@ -12,13 +12,21 @@ dependencies = [
     "pexpect",
     "drgn",
     "click",
+    "pyyaml",
 ]
-
-
 
 [project.scripts]
 crash-mcp = "crash_mcp.server:main"
+compile-crash = "crash_mcp.builder.compile_crash:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/crash_mcp/resource/*",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crash_mcp"]
