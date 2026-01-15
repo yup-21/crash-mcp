@@ -109,7 +109,6 @@ cp .env.example .env
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
 | `CRASH_SEARCH_PATH` | `/var/crash` | 搜索转储文件的路径 |
-| `KB_BASE_DIR` | `""` (项目根目录) | 脚本库根目录 |
 | `CRASH_EXTENSION_LOAD` | `true` | 是否自动加载扩展 (true/false) |
 | `CRASH_EXTENSION_PATH` | `""` | 扩展搜索路径 (冒号分隔)，自动包含 `lib/crash/extensions` |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
