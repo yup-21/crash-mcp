@@ -10,7 +10,6 @@
 |------|------|------|
 | **crash-mcp** | MCP Server | 提供 Tools (能力) - 会话管理、命令执行、脚本运行 |
 | **crash-skill** | Claude Skills | 提供 Knowledge (知识) - 分析工作流、诊断模式 |
-| **crash-agent** | Orchestrator | 提供 Automation (自动化) - LangGraph 编排 |
 
 ## 功能特性
 
@@ -96,14 +95,9 @@ crash-mcp --transport sse --port 8000
 | `run_pykdump_command` | 执行 PyKdump (Python) 代码 |
 | `run_drgn_command` | 执行 drgn Python 代码 |
 | `stop_session` | 关闭会话 |
-| `get_sys_info` | 获取系统信息 |
+| `stop_session` | 关闭会话 |
 
-**Script 工具**:
-| 工具 | 说明 |
-|------|------|
-| `list_scripts` | 列出可用的 drgn 分析脚本 |
-| `read_script` | 获取脚本详情或源代码 |
-| `save_script` | 保存新脚本到待审核区 |
+*(脚本相关功能已移至 `crash-skill`，通过 path 参数传给 `run_drgn_command`)*
 
 
 ### 配置
