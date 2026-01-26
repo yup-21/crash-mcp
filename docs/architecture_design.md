@@ -78,6 +78,8 @@ graph TB
 |------|------|------|
 | **session_mgmt** | `tools/session_mgmt.py` | 会话生命周期，命令执行 |
 | **output_tools** | `tools/output_tools.py` | 输出分页，搜索 |
+| **analysis_scripts** | `tools/analysis_scripts.py` | 脚本管理与执行（条件注册） |
+| **get_info** | `tools/get_info.py` | 自动化诊断报告（条件注册） |
 | **utils** | `tools/utils.py` | `json_response()`, `get_session()` 共享函数 |
 
 ## 3. MCP 工具集
@@ -88,7 +90,7 @@ graph TB
 |------|------|------|
 | `open_vmcore_session` | 启动分析会话 | vmcore_path, vmlinux_path, ssh_host?, ssh_user?, crash_args? |
 | `close_vmcore_session` | 终止会话 | session_id? (默认 last_session) |
-| `run_crash_command` | 执行 crash 命令（也支持 PyKdump） | command, session_id?, force_execute? |
+| `run_crash_command` | 执行 crash 命令（支持 PyKdump） | command, session_id?, force_execute? |
 | `run_drgn_command` | 执行 drgn Python 代码 | command, session_id?, force_execute? |
 
 > **Note**: `list_crash_dumps` 和 `run_pykdump_command` 存在但未公开暴露。
@@ -100,7 +102,15 @@ graph TB
 | `get_command_output` | 获取截断输出的剩余行 | command_id, offset?, limit? (max 500) |
 | `search_command_output` | 在命令输出中正则搜索 | command_id, query, context_lines? |
 
-### 3.3 响应格式
+### 3.3 扩展工具 (条件注册)
+
+| 工具 | 用途 | 依赖配置 |
+|------|------|----------|
+| `run_analysis_script` | 运行预定义分析脚本 | `DRGN_SCRIPTS_PATH` |
+| `list_analysis_scripts` | 列出可用分析脚本 | `DRGN_SCRIPTS_PATH` |
+| `get_crash_info` | 获取崩溃诊断报告 | `GET_DUMPINFO_SCRIPT` |
+
+### 3.4 响应格式
 
 所有工具返回 JSON 格式：
 
@@ -168,20 +178,22 @@ crash-mcp/
 │   ├── tools/
 │   │   ├── session_mgmt.py  # 会话管理工具
 │   │   ├── output_tools.py  # 输出工具
+│   │   ├── analysis_scripts.py # 脚本工具
+│   │   ├── get_info.py      # 诊断报告工具
 │   │   └── utils.py         # 工具共享函数
 │   ├── common/
-│   │   ├── session.py       # BaseSession 抽象类
+│   │   ├── base_session.py  # BaseSession 抽象类
 │   │   ├── session_manager.py # 会话生命周期/去重
 │   │   ├── unified_session.py # 统一命令路由
-│   │   └── command_store.py   # 输出持久化
+│   │   ├── command_store.py   # 输出持久化
+│   │   ├── vmcore_discovery.py # vmcore 发现
+│   │   └── arch_detect.py    # 架构检测
 │   ├── crash/
 │   │   └── session.py       # CrashSession 实现
 │   ├── drgn/
 │   │   └── session.py       # DrgnSession 实现
-│   ├── arch_detect.py       # 架构检测
-│   ├── discovery.py         # vmcore 发现
 │   ├── builder/             # crash 编译器
-│   └── resource/            # 打包资源
+│   └── resource/            # 资源加载与管理
 ├── bin/                     # 编译的 crash 二进制
 ├── lib/crash/extensions/    # crash 扩展
 ├── docs/                    # 文档
@@ -200,6 +212,8 @@ crash-mcp/
 | `CRASH_MCP_CACHE` | `true` | 启用命令缓存 |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
 | `SUPPRESS_MCP_WARNINGS` | `true` | 抑制 MCP 警告 |
+| `GET_DUMPINFO_SCRIPT` | `""` | 自动化诊断脚本模板 |
+| `DRGN_SCRIPTS_PATH` | `""` | drgn 脚本搜索路径（冒号分隔） |
 
 ## 7. 技术依赖
 
@@ -243,3 +257,9 @@ UnifiedSession 自动路由命令：
 - `drgn:code` → DrgnSession
 - `pykdump:code` → CrashSession.run_pykdump
 - 默认无前缀 → crash 引擎
+
+### 8.5 条件功能注册
+
+为了保持接口简洁，部分高级功能根据配置条件注册：
+- `run_analysis_script` / `list_analysis_scripts`: 仅当配置 `DRGN_SCRIPTS_PATH` 时注册
+- `get_crash_info`: 仅当配置 `GET_DUMPINFO_SCRIPT` 时注册
