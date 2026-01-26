@@ -64,14 +64,14 @@ crash-mcp --transport sse --port 8000
 | 工具 | 说明 |
 |------|------|
 | `open_vmcore_session` | 打开 vmcore 崩溃转储文件进行分析 |
-| `run_crash_command` | 执行 crash 实用程序命令 (如 `bt`, `ps`, `sys`) |
-| `run_drgn_command` | 执行 drgn Python 脚本代码 |
+| `run_crash_command` | 执行 crash 命令，支持 PyKdump 扩展 |
+| `run_drgn_command` | 执行 drgn Python 代码 |
 | `close_vmcore_session` | 关闭当前分析会话 |
-| `get_command_output` | 分页获取长命令的完整输出 |
-| `search_command_output` | 在之前的命令输出中搜索特定文本 |
-| `run_analysis_script` | 运行预定义的分析脚本 |
-| `list_analysis_scripts` | 列出所有可用的分析脚本 |
-| `get_crash_info` | 获取自动化崩溃诊断报告（需环境变量配置） |
+| `get_command_output` | 分页获取长命令输出 |
+| `search_command_output` | 正则搜索命令输出 |
+| `run_analysis_script` | 运行预定义分析脚本 (需配置 `DRGN_SCRIPTS_PATH`) |
+| `list_analysis_scripts` | 列出可用分析脚本 (需配置 `DRGN_SCRIPTS_PATH`) |
+| `get_crash_info` | 获取崩溃诊断报告 (需配置 `GET_DUMPINFO_SCRIPT`) |
 
 ### 配置
 
