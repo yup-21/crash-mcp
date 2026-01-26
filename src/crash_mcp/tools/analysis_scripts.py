@@ -140,8 +140,17 @@ def list_analysis_scripts(category: Optional[str] = None) -> str:
 # =============================================================================
 
 def register(mcp: FastMCP):
-    """Register analysis script tools with MCP server."""
+    """Register analysis script tools with MCP server.
+    
+    Only registers if DRGN_SCRIPTS_PATH is configured.
+    """
+    from crash_mcp.config import Config
     from crash_mcp.tools.tool_logging import logged_tool
     
+    if not Config.DRGN_SCRIPTS_PATH:
+        logger.debug("Analysis script tools not registered (DRGN_SCRIPTS_PATH not set)")
+        return
+    
+    logger.info(f"Registering analysis script tools (scripts: {Config.DRGN_SCRIPTS_PATH})")
     mcp.tool()(logged_tool(run_analysis_script))
     mcp.tool()(logged_tool(list_analysis_scripts))

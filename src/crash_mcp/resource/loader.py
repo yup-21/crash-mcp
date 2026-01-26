@@ -21,27 +21,18 @@ def get_scripts_dirs() -> List[str]:
     """
     Get list of script directories to search.
     
-    Priority:
-    1. DRGN_SCRIPTS_PATH environment variable (colon-separated)
-    2. Built-in resource/scripts (fallback, if exists)
+    Only uses DRGN_SCRIPTS_PATH environment variable (colon-separated).
+    Returns empty list if not configured.
     """
     from crash_mcp.config import Config
     
     dirs = []
     
-    # 1. External paths from env
     if Config.DRGN_SCRIPTS_PATH:
         for p in Config.DRGN_SCRIPTS_PATH.split(":"):
             p = p.strip()
             if p and os.path.isdir(p):
                 dirs.append(p)
-    
-    # 2. Built-in fallback (only if no external paths configured)
-    if not dirs:
-        current = os.path.dirname(os.path.abspath(__file__))
-        builtin = os.path.join(current, 'scripts')
-        if os.path.isdir(builtin):
-            dirs.append(builtin)
     
     return dirs
 
