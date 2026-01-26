@@ -1,6 +1,6 @@
 [project]
 name = "crash-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for crash dump analysis"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -11,15 +11,33 @@ dependencies = [
     "python-dotenv",
     "pexpect",
     "drgn",
+    "drgn-tools",
     "click",
+    "pyyaml",
 ]
 
-
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
 
 [project.scripts]
 crash-mcp = "crash_mcp.server:main"
-web-auth-mcp = "crash_mcp.server:main"  # Alias for compatibility if needed
+compile-crash = "crash_mcp.builder.compile_crash:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/crash_mcp/resource/*",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crash_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+

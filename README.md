@@ -1,113 +1,147 @@
 # Crash MCP Server
 
-这是一个基于 MCP (Model Context Protocol) 的服务器，专门用于辅助 **系统崩溃转储 (Crash Dump)** 的分析。
+基于 MCP (Model Context Protocol) 的服务器，用于 **系统崩溃转储 (Crash Dump)** 分析。
 
-它封装了 Linux 的 `crash` 实用程序，允许 AI 助手通过 MCP 协议自动发现转储文件、匹配内核、并执行交互式崩溃分析命令。
+集成 Linux `crash` 实用程序和 `drgn` 可编程调试器，提供统一分析接口。
 
-## 功能特性 (Features)
+## 功能特性
 
-1.  **自动发现转储文件**:
-    - 能够扫描指定目录（默认 `/var/crash`）下的 `vmcore`、`core` 等转储文件。
-2.  **智能内核匹配**:
-    - 尝试自动寻找与转储文件匹配的 `vmlinux` 内核文件（支持同目录查找）。
-3.  **交互式 Crash 会话**:
-    - 通过 `pexpect` 管理 `crash` 工具的交互式会话。
-    - 支持长时间运行的会话，保持上下文。
-4.  **MCP 工具集**:
-    - `list_crash_dumps`: 列出可用的转储文件。
-    - `start_crash_session`:启动一个新的分析会话。
-    - `run_crash_command`: 在当前会话中执行任意 `crash` 命令 (如 `sys`, `bt`, `ps` 等)。
-    - `get_sys_info`: 获取系统基本信息的快捷工具。
-5.  **配置灵活**:
-    - 支持通过 `.env` 文件配置分析路径。
+- **统一会话**: 同时支持 `crash` 和 `drgn` 引擎
+- **会话去重**: 同一 vmcore 自动复用已有会话
+- **命令持久化**: 输出自动落盘，支持分页和搜索
+- **远程分析**: 通过 SSH 连接远程主机，无需下载 vmcore
+- **多传输模式**: Stdio（默认） / SSE（HTTP）
+- **智能架构识别**: 自动检测 vmcore 架构并选择对应的 crash 版本
+- **自动编译**: 内置 crash 工具编译器，支持多架构和压缩格式
 
-
-## 安装与使用 (Installation & Usage)
+## 安装
 
 ### 前置要求
-- 系统需安装 Python 3.10+
-- 系统需安装 `crash` 工具 (用于实际分析)
-- 系统需安装 `pip` (Python 包管理器)
+- Python 3.10+
+- `crash` 工具（可通过内置编译器安装）
+- `python3-dev` (编译 PyKdump 需要)
+- `drgn` 工具（通过 pip 自动安装）
 
-## 安装与使用 (Installation & Usage)
-
-### 前置要求
-- 系统需安装 Python 3.10+
-- 系统需安装 `crash` 工具 (用于实际分析)
-- 建议使用 Linux 环境 (Debian/Ubuntu)
-
-### 1. 快速安装 (推荐)
-
-我们提供了一个脚本来自动创建虚拟环境 (venv) 并安装依赖：
+### 快速安装
 
 ```bash
-# 添加执行权限
-chmod +x install.sh
-
-# 运行安装脚本
-./install.sh
+chmod +x install.sh && ./install.sh
 ```
-> **注意**: 如果脚本提示缺少 `python3-venv`，请按提示安装：`sudo apt install python3-venv`
 
-### 2. 手动安装 (Manual Install)
-
-如果你更喜欢手动操作：
+### 编译 Crash 工具
 
 ```bash
-# 1. 创建虚拟环境
-python3 -m venv venv
-
-# 2. 激活环境
+# 激活虚拟环境
 source venv/bin/activate
 
-# 3. 安装依赖
-pip install -e .
+# 查看依赖安装说明
+compile-crash --deps
+
+# 编译 x86_64 版本
+compile-crash
+
+# 编译 ARM64 版本（在 x86_64 上分析 ARM64 vmcore）
+compile-crash --arch ARM64
+
+# 编译带 PyKdump 支持的版本
+compile-crash --pykdump-from-source
 ```
 
-### 3. 配置
+## 使用
 
-你可以复制示例配置文件并进行修改：
+### 启动服务器
+
 ```bash
-cp .env.example .env
-```
-主要配置项：
-- `CRASH_SEARCH_PATH`: 崩溃转储文件的搜索路径（默认 `/var/crash`）。
-
-### 4. 运行服务器
-
-**命令行运行:**
-```bash
-# 先激活虚拟环境
-source venv/bin/activate
-
-# 启动服务器
+# Stdio 模式
 crash-mcp
+
+# SSE 模式
+crash-mcp --transport sse --port 8000
 ```
 
-**在 Claude Desktop 中配置:**
-在 `mcpServers` 配置中，直接指定虚拟环境中的 python 解释器路径：
+### MCP 工具
 
+| 工具 | 说明 |
+|------|------|
+| `open_vmcore_session` | 打开 vmcore 崩溃转储文件进行分析 |
+| `run_crash_command` | 执行 crash 实用程序命令 (如 `bt`, `ps`, `sys`) |
+| `run_drgn_command` | 执行 drgn Python 脚本代码 |
+| `close_vmcore_session` | 关闭当前分析会话 |
+| `get_command_output` | 分页获取长命令的完整输出 |
+| `search_command_output` | 在之前的命令输出中搜索特定文本 |
+| `run_analysis_script` | 运行预定义的分析脚本 |
+| `list_analysis_scripts` | 列出所有可用的分析脚本 |
+| `get_crash_info` | 获取自动化崩溃诊断报告（需环境变量配置） |
+
+### 配置
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `CRASH_EXTENSION_LOAD` | `true` | 是否自动加载扩展 |
+| `CRASH_MCP_TRUNCATE_LINES` | `20` | 输出截断行数 |
+| `CRASH_MCP_WORKDIR` | `/tmp/crash-mcp-sessions` | 会话工作目录 |
+| `CRASH_MCP_CACHE` | `true` | 启用命令缓存 |
+| `LOG_LEVEL` | `INFO` | 日志级别 |
+| `GET_DUMPINFO_SCRIPT` | (空) | 自动化诊断脚本命令模板 (如 `python3 script.py {vmcore} {vmlinux}`) |
+| `DRGN_SCRIPTS_PATH` | (空) | 外部 drgn 脚本搜索路径 (冒号分隔) |
+
+### 客户端配置
+
+**Claude Desktop** (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
     "crash-analysis": {
-      "command": "/path/to/your/crash-mcp/venv/bin/python",
-      "args": ["-m", "crash_mcp.server"],
-      "cwd": "/path/to/your/crash-mcp",
-      "env": {
-        "CRASH_SEARCH_PATH": "/var/crash"
-      }
+      "command": "/path/to/crash-mcp/venv/bin/crash-mcp"
     }
   }
 }
 ```
 
-## 开发与测试
+## 示例
 
-运行单元测试：
-```bash
-# 需要安装 test 依赖 (pytest)
-pip install pytest
-pytest
+```python
+# 本地分析
+open_vmcore_session("/var/crash/vmcore", "/usr/lib/debug/vmlinux")
+run_crash_command("bt")
+run_crash_command("sys")
+run_drgn_command("prog['init_task'].comm")
+
+# 分页获取长输出
+run_crash_command("ps")  # 返回 command_id
+get_command_output("crash:ps", offset=20, limit=50)
+
+# 搜索输出
+search_command_output("crash:bt", "schedule")
+
+# 远程分析
+open_vmcore_session("/var/crash/vmcore", "/usr/lib/debug/vmlinux", 
+              ssh_host="server-01", ssh_user="root")
 ```
-项目包含一个 `mock_crash.py` 脚本，用于在没有真实 `crash` 工具的环境下测试交互逻辑。
+
+## 常见问题
+
+### 1. `no lzo compression support` 错误
+
+vmcore 文件使用 LZO 压缩，但 crash 工具编译时未启用 LZO 支持。
+
+```bash
+sudo apt-get install liblzo2-dev
+compile-crash --clean
+```
+
+### 2. 缺少 GMP/MPFR 库
+
+```bash
+sudo apt-get install libgmp-dev libmpfr-dev
+```
+
+### 3. 查看所有编译依赖
+
+```bash
+compile-crash --deps
+```
+
+## 许可证
+
+[MIT License](LICENSE)

@@ -1,0 +1,38 @@
+# =============================================================================
+# Crash-MCP Analysis Scripts Configuration (Optional)
+# =============================================================================
+#
+# This file provides an alternative way to define script metadata.
+# Scripts are auto-discovered from *.py files in this directory.
+#
+# You can also add metadata via YAML frontmatter in the script docstring:
+#
+#   """
+#   ---
+#   description: What this script does
+#   params:
+#     my_param:
+#       type: int
+#       desc: Description
+#       required: true
+#   ---
+#   Script docstring...
+#   """
+#
+# Priority: scripts.yaml > YAML frontmatter > docstring fallback
+# =============================================================================
+
+scripts:
+  # Example: custom script configuration
+  # my_custom_script:
+  #   description: "My custom analysis script"
+  #   category: utility
+  #   params:
+  #     target_addr:
+  #       type: int
+  #       desc: "Address to analyze"
+  #       required: true
+  #     verbose:
+  #       type: bool
+  #       desc: "Enable verbose output"
+  #       required: false

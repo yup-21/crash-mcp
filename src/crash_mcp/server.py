@@ -1,314 +1,93 @@
+"""Crash MCP Server - Main entry point."""
 import logging
-import uuid
-import os
 import click
-from typing import Optional, List, Dict
 from mcp.server.fastmcp import FastMCP
 
-
-from crash_mcp.session import CrashSession
-from crash_mcp.discovery import CrashDiscovery
 from crash_mcp.config import Config
-from crash_mcp.drgn_session import DrgnSession
-from crash_mcp.unified_session import UnifiedSession
-
-
 
 # Configure logging
-logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL.upper()), 
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=getattr(logging, Config.LOG_LEVEL.upper()), 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("server.log"),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger("crash-mcp")
 
-# Initialize Server
-mcp = FastMCP("crash-mcp")
 
-# State management
-# State management
-sessions: Dict[str, CrashSession] = {}
-drgn_sessions: Dict[str, DrgnSession] = {}
-unified_sessions: Dict[str, UnifiedSession] = {}
-
-last_session_id: Optional[str] = None
-last_drgn_session_id: Optional[str] = None
-last_unified_session_id: Optional[str] = None
-
-
-
-# --- Tools ---
-
-@mcp.tool()
-def list_crash_dumps(search_path: str = Config.CRASH_SEARCH_PATH) -> str:
+def register_all_tools(mcp: FastMCP):
     """
-    Scans for crash dumps in the specified directory (recursive).
-    Returns a formatted string list of found dumps.
+    注册所有 MCP 工具。
+    
+    工具分组:
+    - Session Management: list_crash_dumps, open_vmcore_session, close_crash_session, 
+                          run_crash_command, run_drgn_command, run_pykdump_command
+    - Output Tools: get_command_output, search_command_output
     """
-    logger.info(f"Listing crash dumps in {search_path}")
-    dumps = CrashDiscovery.find_dumps([search_path])
+    from crash_mcp.tools import session_mgmt
+    session_mgmt.register(mcp)
     
-    if not dumps:
-        return "No crash dumps found."
+    from crash_mcp.tools import output_tools
+    output_tools.register(mcp)
     
-    # Sort by modification time (newest first)
-    dumps.sort(key=lambda x: x['modified'], reverse=True)
-    
-    # Limit to top 10 to save tokens
-    total_count = len(dumps)
-    limit = 10
-    dumps = dumps[:limit]
-        
-    output = [f"Found {total_count} crash dumps (showing top {limit}):"]
-    for d in dumps:
-        output.append(f"- {d['path']} (Size: {d['size']} bytes)")
-    
-    if total_count > limit:
-        output.append(f"... and {total_count - limit} more.")
-    
-    return "\n".join(output)
+    from crash_mcp.tools import analysis_scripts
+    analysis_scripts.register(mcp)
 
-def _start_session_internal(dump_path: str, kernel_path: Optional[str] = None) -> str:
-    """Helper to start session and update global state."""
-    global last_session_id
-    
-    if not os.path.exists(dump_path):
-        return f"Error: Dump file not found at {dump_path}"
-        
-    if not kernel_path:
-        # Try to auto-match
-        kernel_path = CrashDiscovery.match_kernel(dump_path, [os.path.dirname(dump_path)])
-        if kernel_path:
-            logger.info(f"Auto-matched kernel: {kernel_path}")
-        else:
-            logger.warning("No matching kernel found automatically.")
-    
-    session_id = str(uuid.uuid4())
-    logger.info(f"Starting session {session_id} for {dump_path}")
-    
-    try:
-        session = CrashSession(dump_path, kernel_path)
-        session.start()
-        sessions[session_id] = session
-        last_session_id = session_id # Update default session
-        return session_id
-    except Exception as e:
-        logger.error(f"Failed to start session: {e}")
-        raise e
+    from crash_mcp.tools import get_info
+    get_info.register(mcp)
 
-@mcp.tool()
-def start_crash_session(dump_path: str, kernel_path: Optional[str] = None) -> str:
-    """
-    Starts a new interactive crash analysis session for the given dump.
-    If kernel_path is not provided, attempts to find a matching kernel automatically.
-    Returns the Session ID.
-    """
-    try:
-        session_id = _start_session_internal(dump_path, kernel_path)
-        return f"Session started successfully. Session ID: {session_id}"
-    except Exception as e:
-        return f"Error starting crash session: {str(e)}"
-
-@mcp.tool()
-def analyze_target(vmcore_path: str, vmlinux_path: str, 
-                  ssh_host: Optional[str] = None, ssh_user: Optional[str] = None) -> str:
-    """
-    Starts a Unified Analysis Session for the target (crash + drgn).
-    Supports local or remote (SSH) targets.
-    
-    Args:
-        vmcore_path: Path to vmcore (local or remote).
-        vmlinux_path: Path to vmlinux (local or remote).
-        ssh_host: Optional hostname/IP for remote execution.
-        ssh_user: Optional username for remote execution.
-        
-    Returns:
-        A Session ID that routes commands automatically to crash or drgn.
-    """
-    global last_unified_session_id
-    
-    # Validation
-    if not ssh_host and not os.path.exists(vmcore_path):
-        # Only check local existence if not remote
-        return f"Error: Dump file not found locally at {vmcore_path} and no remote host specified."
-
-    session_id = str(uuid.uuid4())
-    logger.info(f"Starting Unified Session {session_id} for {vmcore_path} (Remote: {ssh_host})")
-    
-    try:
-        session = UnifiedSession(vmcore_path, vmlinux_path, 
-                               remote_host=ssh_host, remote_user=ssh_user)
-        session.start()
-        
-        unified_sessions[session_id] = session
-        last_unified_session_id = session_id
-        
-        return f"Unified Session started successfully. ID: {session_id}\n(Wraps both 'crash' and 'drgn' engines. Commands are automatically routed.)"
-    except Exception as e:
-        logger.error(f"Failed to start unified session: {e}")
-        return f"Failed to start unified session: {str(e)}"
-
-@mcp.tool()
-def run_command(command: str, session_id: Optional[str] = None, truncate: bool = True) -> str:
-    """
-    Executes a command in the Unified Session.
-    Automatically routes to 'crash' or 'drgn' based on syntax.
-    Use prefixes 'crash:' or 'drgn:' to force routing.
-    """
-    target_id = session_id or last_unified_session_id
-    
-    if not target_id:
-        return "Error: No session specified and no active default session."
-    
-    if target_id not in unified_sessions:
-        # Fallback to legacy single sessions if ID matches? 
-        # For simplicity, strict separation or check others.
-        if target_id in sessions:
-             return run_crash_command(command, session_id=target_id, truncate=truncate)
-        if target_id in drgn_sessions:
-             return run_drgn_command(command, session_id=target_id, truncate=truncate)
-        return f"Error: Session ID {target_id} not found."
-    
-    session = unified_sessions[target_id]
-    if not session.is_active():
-        del unified_sessions[target_id]
-        return "Error: Session is no longer active."
-        
-    try:
-        return session.execute_command(command, truncate=truncate)
-    except Exception as e:
-        return f"Error executing command: {str(e)}"
+    # Prompts
+    from crash_mcp import prompts
+    prompts.register(mcp)
 
 
-
-@mcp.tool()
-def run_crash_command(command: str, session_id: Optional[str] = None, truncate: bool = True) -> str:
-    """
-    Executes a command in an active crash session.
-    If session_id is omitted, uses the most recently started session.
+def create_mcp_server() -> FastMCP:
+    """Create and configure MCP server."""
+    from crash_mcp.prompts import get_system_prompt
     
-    Args:
-        command: The crash command to run
-        session_id: Optional explicit session ID
-        truncate: Whether to truncate long output (default: True). Set to False for full output.
-    """
-    target_id = session_id or last_session_id
-    
-    if not target_id:
-        return "Error: No session specified and no active default session."
-        
-    if target_id not in sessions:
-        return f"Error: Session ID {target_id} not found."
-    
-    session = sessions[target_id]
-    if not session.is_active():
-        del sessions[target_id]
-        return "Error: Session is no longer active."
-        
-    try:
-        output = session.execute_command(command, truncate=truncate)
-        return output
-    except Exception as e:
-        return f"Error executing command: {str(e)}"
-
-@mcp.tool()
-def stop_crash_session(session_id: str) -> str:
-    """
-    Terminates an active crash session.
-    """
-    if session_id not in sessions:
-        return f"Error: Session ID {session_id} not found."
-        
-    session = sessions[session_id]
-    session.close()
-    del sessions[session_id]
-    return f"Session {session_id} closed."
-
-# --- Drgn Tools ---
-
-def _start_drgn_session_internal(dump_path: str, kernel_path: Optional[str] = None) -> str:
-    """Helper to start drgn session and update global state."""
-    global last_drgn_session_id
-    
-    if not os.path.exists(dump_path):
-        return f"Error: Dump file not found at {dump_path}"
-        
-    session_id = str(uuid.uuid4())
-    logger.info(f"Starting drgn session {session_id} for {dump_path}")
-    
-    try:
-        session = DrgnSession(dump_path, kernel_path)
-        session.start()
-        drgn_sessions[session_id] = session
-        last_drgn_session_id = session_id 
-        return session_id
-    except Exception as e:
-        logger.error(f"Failed to start drgn session: {e}")
-        raise e
-
-@mcp.tool()
-def start_drgn_session(dump_path: str, kernel_path: Optional[str] = None) -> str:
-    """
-    Starts a new interactive drgn analysis session for the given dump.
-    Returns the Session ID.
-    Notes:
-    - drgn requires debug symbols (vmlinux). If kernel_path is usually required unless drgn can find it automatically.
-    """
-    try:
-        session_id = _start_drgn_session_internal(dump_path, kernel_path)
-        return f"Drgn session started successfully. Session ID: {session_id}"
-    except Exception as e:
-        return f"Error starting drgn session: {str(e)}"
-
-@mcp.tool()
-def run_drgn_command(command: str, session_id: Optional[str] = None, truncate: bool = True) -> str:
-    """
-    Executes a python command in an active drgn session.
-    If session_id is omitted, uses the most recently started drgn session.
-    """
-    target_id = session_id or last_drgn_session_id
-    
-    if not target_id:
-        return "Error: No drgn session specified and no active default session."
-        
-    if target_id not in drgn_sessions:
-        return f"Error: Drgn Session ID {target_id} not found."
-    
-    session = drgn_sessions[target_id]
-    if not session.is_active():
-        del drgn_sessions[target_id]
-        return "Error: Session is no longer active."
-        
-    try:
-        output = session.execute_command(command, truncate=truncate)
-        return output
-    except Exception as e:
-        return f"Error executing command: {str(e)}"
+    mcp = FastMCP(
+        name="crash-mcp",
+        instructions=get_system_prompt()  # Auto-inject system prompt to clients
+    )
+    register_all_tools(mcp)
+    return mcp
 
 
-@mcp.tool()
-def get_sys_info(session_id: Optional[str] = None) -> str:
-    """
-    Convenience tool to get system info (runs 'sys' command).
-    Uses default session if session_id is not provided.
-    """
-    return run_crash_command("sys", session_id)
+# Create global mcp instance for module-level access
+mcp = create_mcp_server()
+
 
 def main():
-    # mcp.run() # Old
-    pass
+    """Entry point for console script."""
+    cli()
+
 
 @click.command()
 @click.option('--transport', type=click.Choice(['stdio', 'sse']), default='stdio', help='Transport mode')
 @click.option('--port', type=int, default=8000, help='Port for SSE mode')
 @click.option('--host', default='0.0.0.0', help='Host for SSE mode')
 def cli(transport, port, host):
+    """Start the Crash MCP server."""
     if transport == 'sse':
         logger.info(f"Starting SSE server on {host}:{port}")
         mcp.settings.port = port
         mcp.settings.host = host
+        
+        # Disable strict host checking to allow external access (e.g. 172.x.x.x)
+        # This fixes "HTTP 421 Misdirected Request / Invalid Host header"
+        if hasattr(mcp.settings, 'transport_security') and mcp.settings.transport_security:
+            # Completely disable strict host checking
+            mcp.settings.transport_security.enable_dns_rebinding_protection = False
+            mcp.settings.transport_security.allowed_hosts = ["*"]
+            mcp.settings.transport_security.allowed_origins = ["*"]
+        
         mcp.run(transport='sse')
     else:
         logger.info("Starting Stdio server")
         mcp.run(transport='stdio')
 
+
 if __name__ == "__main__":
     cli()
-
