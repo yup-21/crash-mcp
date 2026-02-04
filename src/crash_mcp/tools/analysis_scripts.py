@@ -24,27 +24,66 @@ def _get_script_registry() -> Dict[str, Dict[str, Any]]:
     return get_script_registry()
 
 
-def _build_script_with_params(script_name: str, params: Optional[Dict[str, Any]]) -> str:
+def _convert_param_for_injection(key: str, value: Any, expected_type: Optional[str] = None) -> str:
+    """
+    Convert a parameter value to its Python code representation.
+    
+    Intelligently handles type conversion based on:
+    1. Explicit type hints from param metadata
+    2. Value format detection (0x prefix -> int, numeric strings -> int)
+    """
+    # Already native types
+    if isinstance(value, bool):
+        return f"{key} = {value}"
+    if isinstance(value, int):
+        return f"{key} = {value}"
+    if isinstance(value, float):
+        return f"{key} = {value}"
+    
+    # String with type hint or format detection
+    if isinstance(value, str):
+        # Explicit int type expected from metadata
+        if expected_type == "int":
+            return f"{key} = int({repr(value)}, 0)"  # 0 = auto-detect base
+        
+        # Auto-detect hex format (0x or 0X prefix)
+        if value.startswith("0x") or value.startswith("0X"):
+            return f"{key} = int({repr(value)}, 16)"
+        
+        # Auto-detect decimal integer (including negative)
+        if value.lstrip("-").isdigit() and value:
+            return f"{key} = int({repr(value)})"
+        
+        # Default: keep as string
+        safe_value = value.replace("'", "\\'")
+        return f"{key} = '{safe_value}'"
+    
+    # Fallback for other types
+    return f"{key} = {repr(value)}"
+
+
+def _build_script_with_params(
+    script_name: str, 
+    params: Optional[Dict[str, Any]],
+    param_meta: Optional[Dict[str, Dict[str, Any]]] = None
+) -> str:
     """
     Build executable script by prepending parameter assignments.
+    
+    Intelligently handles type conversion based on param metadata and format detection.
     """
     script_content = load_script(script_name)
     
     if not params:
         return script_content
     
-    # Build parameter injection lines
+    param_meta = param_meta or {}
+    
+    # Build parameter injection lines with intelligent type conversion
     param_lines = []
     for key, value in params.items():
-        if isinstance(value, str):
-            safe_value = value.replace("'", "\\'")
-            param_lines.append(f"{key} = '{safe_value}'")
-        elif isinstance(value, bool):
-            param_lines.append(f"{key} = {value}")
-        elif isinstance(value, (int, float)):
-            param_lines.append(f"{key} = {value}")
-        else:
-            param_lines.append(f"{key} = {repr(value)}")
+        expected_type = param_meta.get(key, {}).get("type")
+        param_lines.append(_convert_param_for_injection(key, value, expected_type))
     
     if param_lines:
         prefix = "\n".join(param_lines) + "\n\n"
@@ -87,8 +126,8 @@ def run_analysis_script(
             return json_response("error", error=f"Missing required parameter: '{param_name}' ({param_info.get('desc', '')})")
     
     try:
-        # Build script with injected parameters
-        full_script = _build_script_with_params(script_name, params)
+        # Build script with injected parameters (pass param metadata for type hints)
+        full_script = _build_script_with_params(script_name, params, script_meta.get("params", {}))
         
         # Execute via drgn session
         output = session.execute_command(f"drgn:{full_script}", truncate=False)
