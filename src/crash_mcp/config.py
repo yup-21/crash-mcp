@@ -35,6 +35,9 @@ class Config:
     # External Tools
     GET_DUMPINFO_SCRIPT = os.getenv("GET_DUMPINFO_SCRIPT", "")
     
+    # Crash Binary Path (directory containing crash, crash-arm64, etc.)
+    CRASH_PATH = os.getenv("CRASH_PATH", "")
+    
     # External Scripts Path (colon-separated)
     # Scripts in these directories are auto-discovered by run_analysis_script
     DRGN_SCRIPTS_PATH = os.getenv("DRGN_SCRIPTS_PATH", "")

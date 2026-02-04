@@ -20,6 +20,7 @@ class CommandResult:
     total_lines: int
     timestamp: float
     cached: bool = False
+    is_error: bool = False    # True if output indicates an error
 
 
 class CommandStore:
@@ -33,7 +34,7 @@ class CommandStore:
         logger.debug(f"CommandStore initialized at {self.workdir}")
     
     def save(self, engine: str, command: str, output: str, 
-             context: Dict[str, str]) -> CommandResult:
+             context: Dict[str, str], is_error: bool = False) -> CommandResult:
         """Persist command output to file, return result."""
         command_id = self._make_id(engine, command, context)
         
@@ -48,6 +49,7 @@ class CommandStore:
             existing.total_lines = len(output.splitlines())
             existing.timestamp = time.time()
             existing.cached = False
+            existing.is_error = is_error
             return existing
         
         # Unique filename
@@ -70,6 +72,7 @@ class CommandStore:
             total_lines=len(lines),
             timestamp=time.time(),
             cached=False,
+            is_error=is_error,
         )
         self._commands[command_id] = result
         logger.debug(f"Saved command output: {command_id} -> {output_file}")
@@ -77,13 +80,14 @@ class CommandStore:
     
     def get_cached(self, engine: str, command: str, 
                    context: Dict[str, str]) -> Optional[CommandResult]:
-        """Check if command exists in cache (same context)."""
+        """Check if command exists in cache (same context). Skips error results."""
         command_id = self._make_id(engine, command, context)
         result = self._commands.get(command_id)
-        if result:
+        if result and not result.is_error:
             result.cached = True
             logger.debug(f"Cache hit: {command_id}")
-        return result
+            return result
+        return None
     
     def get_result(self, command_id: str) -> Optional[CommandResult]:
         """Get command result by ID."""

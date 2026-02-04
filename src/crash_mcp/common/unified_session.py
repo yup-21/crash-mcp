@@ -46,6 +46,7 @@ class UnifiedSession:
         
         self.id = str(uuid.uuid4())
         self.drgn_start_error = None
+        self.crash_start_error = None
 
     from typing import Callable
 
@@ -88,6 +89,7 @@ class UnifiedSession:
         except Exception as e:
             logger.error(f"Crash engine failed to start: {e}")
             self.crash_session = None
+            self.crash_start_error = str(e)
             
         # Start Drgn (50-100%)
         try:
@@ -166,12 +168,15 @@ class UnifiedSession:
         # Execute command (no truncation - we'll handle that in the tool layer)
         output = self.execute_command(f"{engine}:{cmd}", timeout=timeout, truncate=False)
         
+        # Detect if output is an error (should not be cached)
+        is_error = output.strip().startswith("Error:")
+        
         # Update context if needed (e.g., 'set pid 1234')
         self._maybe_update_context(engine, cmd)
         
         # Persist and return
         if self.command_store:
-            return self.command_store.save(engine, cmd, output, relevant_context)
+            return self.command_store.save(engine, cmd, output, relevant_context, is_error=is_error)
         
         # Fallback for sessions without workdir
         return CommandResult(
@@ -224,7 +229,8 @@ class UnifiedSession:
 
     def _exec_crash(self, cmd: str, timeout: int, truncate: bool) -> str:
         if not self.crash_session or not self.crash_session.is_active():
-            return "Error: Crash engine is not active."
+            error_msg = self.crash_start_error
+            return f"Error: Crash engine is not active. (Reason: {error_msg})" if error_msg else "Error: Crash engine is not active."
         return self.crash_session.execute_command(cmd, timeout, truncate)
 
     def _exec_pykdump(self, code: str, timeout: int, truncate: bool) -> str:

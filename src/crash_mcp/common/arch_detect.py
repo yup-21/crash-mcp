@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Optional, Tuple
 from dataclasses import dataclass
 
+from crash_mcp.config import Config
+
 logger = logging.getLogger(__name__)
 
 
@@ -410,8 +412,13 @@ def find_crash_binary(
     if search_dirs is None:
         search_dirs = []
         
-        # 1. Project bin directory
-        project_root = Path(__file__).resolve().parent.parent.parent
+        # 0. CRASH_PATH from config (highest priority)
+        if Config.CRASH_PATH:
+            search_dirs.append(Path(Config.CRASH_PATH))
+            logger.info(f"Using CRASH_PATH: {Config.CRASH_PATH}")
+        
+        # 1. Project bin directory (for development)
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
         search_dirs.append(project_root / "bin")
         
         # 2. Current working directory bin

@@ -24,9 +24,9 @@ def get_crash_info(session_id: Optional[str] = None, timeout: int = 300) -> str:
     except ValueError as e:
         return json_response("error", error=str(e))
     
-    # Replace placeholders with session paths
-    vmcore_path = getattr(session, 'vmcore_path', '')
-    vmlinux_path = getattr(session, 'vmlinux_path', '')
+    # Get session for vmcore/vmlinux paths
+    vmcore_path = getattr(session, 'dump_path', '')
+    vmlinux_path = getattr(session, 'kernel_path', '')
     
     cmd_str = cmd_template.format(
         vmcore=vmcore_path,

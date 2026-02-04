@@ -7,13 +7,13 @@ license = { file = "LICENSE" }
 requires-python = ">=3.10"
 
 dependencies = [
-    "mcp",
-    "python-dotenv",
-    "pexpect",
-    "drgn",
-    "drgn-tools",
-    "click",
-    "pyyaml",
+    "mcp>=1.25.0",
+    "python-dotenv>=1.2.1",
+    "pexpect>=4.9.0",
+    "drgn>=0.0.33",
+    "drgn-tools @ git+https://github.com/oracle-samples/drgn-tools.git",
+    "click>=8.3.1",
+    "pyyaml>=6.0.3",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +36,9 @@ include = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/crash_mcp"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

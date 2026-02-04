@@ -270,6 +270,16 @@ class BaseSession:
             logger.info("Closing session...")
             try:
                 self._process.sendline('quit')
+                # Wait for process to exit, up to 3 seconds
+                import time
+                for _ in range(30):
+                    time.sleep(0.1)
+                    if not self.is_active():
+                        logger.info("Session exited gracefully after 'quit'")
+                        break
+                else:
+                    logger.warning("Session did not exit after 'quit', forcing termination")
+                    raise Exception("Timeout waiting for quit")
                 if hasattr(self._process, 'close'):
                     self._process.close()
                 elif hasattr(self._process, 'wait'):
@@ -285,6 +295,7 @@ class BaseSession:
                      except:
                         pass
             self._process = None
+
 
     def validate_remote_environment(self):
         """
