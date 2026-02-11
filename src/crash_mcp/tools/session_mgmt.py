@@ -1,7 +1,9 @@
 """Session management tools for crash-mcp."""
 import os
+import re
 import logging
 import datetime
+import subprocess
 from typing import Optional
 from mcp.server.fastmcp import FastMCP, Context
 
@@ -15,17 +17,25 @@ import crash_mcp.context as context
 logger = logging.getLogger("crash-mcp")
 
 
-def _format_command_response(result: CommandResult, max_lines: int) -> str:
+
+
+
+def _format_command_response(result: CommandResult, max_lines: int, override_output: str = None) -> str:
     """Format command response with truncation and state info."""
-    if result.output_file is None:
-        # Fallback for sessions without workdir
+    # Read content from file or memory
+    if override_output is not None:
+        lines = override_output.splitlines()
+    elif result.output_file and result.output_file.exists():
+        lines = result.output_file.read_text().splitlines()
+    elif result.output_content is not None:
+        lines = result.output_content.splitlines()
+    else:
+        # Truly empty (no workdir, no content)
         return json_response("success", {
             "output": "",
             "command_id": result.command_id,
             "state": {"total_lines": result.total_lines, "truncated": False},
         })
-    
-    lines = result.output_file.read_text().splitlines()
     total = len(lines)
     
     if total <= max_lines:
@@ -151,6 +161,56 @@ def open_vmcore_session(ctx: Context, vmcore_path: str, vmlinux_path: str,
         return json_response("error", error=f"Failed to start session: {str(e)}")
 
 
+def _detect_crash_error_hint(command: str, output: str) -> Optional[str]:
+    """Analyze failed crash command and return a helpful hint."""
+    hint = None
+    cmd_lower = command.lower()
+
+    # Check 1: Macro usage (per_cpu, container_of)
+    if "per_cpu" in command:
+        hint = "\n[MCP Tip]: 'crash' p command does NOT support per_cpu() macro.\n" \
+               " - Use crash syntax: p <var>:<cpu_number> (e.g., p tick_cpu_sched:100)"
+    elif "container_of" in command or "list_entry" in command:
+        hint = "\n[MCP Tip]: 'crash' p command does NOT support container_of().\n" \
+               " - Use 'list' command: list -s <struct>.<member> -h <head_addr>\n" \
+               " - Or use drgn: run_drgn_command(\"drgn.container_of(ptr, type, member)\")"
+               
+    # Check 2: Pointer Chasing (->) or Dot Access on Address
+    elif ("->" in command or "." in command) and ("gdb request failed" in output or "syntax error" in output):
+        hint = "\n[MCP Tip]: Avoid complex pointer chaining (ptr->a->b) or dot access on addresses in 'crash'.\n" \
+               " - Use 'struct <type> <addr>' to view members.\n" \
+               " - Use 'run_analysis_script' for complex traversals.\n" \
+               " - Incorrect: p 0xffff...member\n" \
+               " - Correct:   struct my_struct 0xffff..."
+               
+    # Check 3: Symbol lookup errors (symbol/nm usage)
+    elif "symbol" in output and "not found" in output:
+         # Agent tried "symbol <addr>" or similar GDB style
+         hint = "\n[MCP Tip]: Symbol not found or invalid command.\n" \
+                " - To find symbol address: 'sym <name>'\n" \
+                " - To find symbol from address: 'sym <addr>'\n" \
+                " - Do NOT use 'symbol' or 'info symbol'."
+    elif "command not found" in output:
+         if "nm" in command.split():
+             hint = "\n[MCP Tip]: 'nm' is a shell command, not available in crash.\n" \
+                    " - Use 'sym <name>' to search symbols."
+
+    # Check 4: Struct errors
+    elif "invalid data structure reference" in output:
+         hint = "\n[MCP Tip]: Structure mismatch or typo.\n" \
+                " - Use 'struct' (singular) for the command name, but ensure the TYPE name is correct.\n" \
+                " - Example: 'struct task_struct <addr>'"
+
+    # Check 5: GDB failure generic
+    elif "gdb request failed" in output:
+        hint = "\n[MCP Tip]: crash's 'p' command is not GDB. Avoid macros and complex expressions.\n" \
+               " - Use 'struct <type> <addr>' to inspect memory.\n" \
+               " - Use 'union <type> <addr>' for unions.\n" \
+               " - Use 'drgn' for pythonic logical analysis."
+
+    return ("\n" + hint) if hint else None
+
+
 def run_crash_command(command: str, session_id: Optional[str] = None, 
                       force_execute: bool = False) -> str:
     """Execute crash utility command on vmcore.
@@ -167,11 +227,62 @@ def run_crash_command(command: str, session_id: Optional[str] = None,
         
     try:
         result = session.execute_with_store(f"crash:{command}", force=force_execute)
+        
+        # Heuristic: Detect failed inputs and inject advice
+        if result.output_file:
+            content = result.output_file.read_text()
+
+            # 1. Check for silent failure (empty output) on commands that MUST return data
+            if not content.strip():
+                 cmd_head = command.strip().split()[0]
+                 # List of commands that should never be silent
+                 if cmd_head in ["rd", "p", "struct", "union", "dis", "bt", "ps", "sym", "list", "dev", "mach", "sys", "irq", "task"]:
+                      error_msg = f"Command '{command}' returned no output. This usually means the address is invalid, unmapped, or the command failed silently."
+                      logger.warning(error_msg)
+                      return json_response("error", error=error_msg)
+
+            # 2. Check for explicit error messages
+            if "gdb request failed" in content or "symbol not found" in content or "syntax error" in content or "command not found" in content or "invalid data structure reference" in content:
+                 hint = _detect_crash_error_hint(command, content)
+                 
+                 if hint:
+                     formatted = _format_command_response(result, Config.OUTPUT_TRUNCATE_LINES)
+                     import json
+                     resp_dict = json.loads(formatted)
+                     if "result" in resp_dict and "output" in resp_dict["result"]:
+                         resp_dict["result"]["output"] += hint
+                     return json.dumps(resp_dict)
+
         return _format_command_response(result, Config.OUTPUT_TRUNCATE_LINES)
     except Exception as e:
         logger.error(f"Error executing crash command: {e}")
         return json_response("error", error=str(e))
 
+
+def _detect_drgn_error_hint(command: str, output: str) -> str:
+    """Provide hints for common drgn errors."""
+    hints = []
+    if "AttributeError" in output:
+        if "'_drgn.Program' object has no attribute 'tasks'" in output:
+             hints.append("\n[MCP Hint]: 'prog.tasks()' does not exist. Use helper:\n  from drgn.helpers.linux.pid import for_each_task\n  for task in for_each_task(prog): ...")
+        elif "has no attribute 'TaskIterator'" in output:
+             hints.append("\n[MCP Hint]: TaskIterator does not exist. Use 'for_each_task' helper.")
+        elif "has no attribute 'container_of'" in output:
+             hints.append("\n[MCP Hint]: 'container_of' is a function 'drgn.container_of(ptr, type, member)', not a method.")
+        elif "has no attribute 'list_entry'" in output:
+             hints.append("\n[MCP Hint]: Use 'drgn.container_of' or 'drgn.helpers.linux.list.list_for_each_entry'.")
+
+    if "ObjectNotFoundError" in output:
+        if "could not find 'current'" in output:
+             hints.append("\n[MCP Hint]: 'current' symbol not found. To get current task on CPU, use:\n  from drgn.helpers.linux.sched import cpu_curr\n  task = cpu_curr(prog, <cpu>)")
+             
+    if "TypeError" in output and "not iterable" in output:
+         if "struct list_head" in output:
+             hints.append("\n[MCP Hint]: 'struct list_head' is not directly iterable. Use 'drgn.helpers.linux.list.list_for_each_entry'.")
+
+    if hints:
+        return "".join(hints)
+    return ""
 
 def run_drgn_command(command: str, session_id: Optional[str] = None,
                      force_execute: bool = False) -> str:
@@ -191,6 +302,20 @@ def run_drgn_command(command: str, session_id: Optional[str] = None,
         
     try:
         result = session.execute_with_store(f"drgn:{command}", force=force_execute)
+        
+        # Inject hints for errors
+        if result.output_file:
+             content = result.output_file.read_text()
+             if "Traceback" in content or "Error" in content:
+                  hint = _detect_drgn_error_hint(command, content)
+                  if hint:
+                       formatted = _format_command_response(result, Config.OUTPUT_TRUNCATE_LINES)
+                       import json
+                       resp_dict = json.loads(formatted)
+                       if "result" in resp_dict and "output" in resp_dict["result"]:
+                           resp_dict["result"]["output"] += hint
+                       return json.dumps(resp_dict)
+
         return _format_command_response(result, Config.OUTPUT_TRUNCATE_LINES)
     except Exception as e:
         logger.error(f"Error executing drgn command: {e}")
@@ -242,6 +367,8 @@ def close_vmcore_session(session_id: Optional[str] = None) -> str:
     return json_response("success", {"message": "Session closed"})
 
 
+
+
 def register(mcp: FastMCP):
     """Register session management tools with MCP server."""
     from crash_mcp.tools.tool_logging import logged_tool
@@ -252,3 +379,4 @@ def register(mcp: FastMCP):
     mcp.tool()(logged_tool(run_drgn_command))
     # mcp.tool()(run_pykdump_command)  # Hidden: use run_crash_command with pykdump extensions
     mcp.tool()(logged_tool(close_vmcore_session))
+

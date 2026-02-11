@@ -86,36 +86,72 @@ def parse_yaml_frontmatter(content: str) -> Optional[Dict[str, Any]]:
 
 
 def _parse_simple_yaml(content: str) -> Dict[str, Any]:
-    """Simple YAML parser for basic key-value pairs (fallback without PyYAML)."""
-    result = {}
-    current_key = None
-    current_indent = 0
+    """
+    Simple YAML parser for basic key-value pairs (fallback without PyYAML).
+    Supports nested dictionaries (recursively).
+    """
+    lines = [l for l in content.splitlines() if l.strip()]
     
-    for line in content.splitlines():
-        if not line.strip():
-            continue
-            
-        # Count leading spaces
-        indent = len(line) - len(line.lstrip())
-        stripped = line.strip()
+    def _parse_block(start_idx: int, min_indent: int) -> tuple[Dict[str, Any], int]:
+        result = {}
+        i = start_idx
         
-        if ':' in stripped:
-            key, _, value = stripped.partition(':')
-            key = key.strip()
-            value = value.strip()
+        while i < len(lines):
+            line = lines[i]
+            indent = len(line) - len(line.lstrip())
             
-            if value:
-                # Simple key: value
-                if indent == 0:
-                    result[key] = value
+            # If we drop below current block's indent, we are done
+            if indent < min_indent:
+                return result, i
+            
+            # Skip deeper indented lines (children handled by recursion)
+            if indent > min_indent:
+                # Should have been consumed by previous key's recursion, 
+                # but if we are here, it might be a malformed structure or comment, skip
+                i += 1
+                continue
+                
+            stripped = line.strip()
+            if ':' in stripped:
+                key, _, value_part = stripped.partition(':')
+                key = key.strip()
+                value_part = value_part.strip()
+                
+                if value_part:
+                    # Leaf node (Key: Value)
+                    result[key] = value_part
+                    i += 1
+                else:
+                    # Parent node (Key: \n ...)
+                    # Look ahead to determine child indent
+                    if i + 1 < len(lines):
+                        next_line = lines[i+1]
+                        next_indent = len(next_line) - len(next_line.lstrip())
+                        
+                        if next_indent > indent:
+                            child_dict, new_i = _parse_block(i + 1, next_indent)
+                            result[key] = child_dict
+                            i = new_i
+                        else:
+                            # Next line not indented, empty dict
+                            result[key] = {}
+                            i += 1
+                    else:
+                        result[key] = {}
+                        i += 1
             else:
-                # Nested structure - skip for simple parser
-                if indent == 0:
-                    result[key] = {}
-                    current_key = key
-                    current_indent = indent
-    
-    return result
+                # Not a key-value line, skip
+                i += 1
+                
+        return result, i
+
+    # Parse root block (indent 0 usually, but we accept whatever starts)
+    if not lines:
+        return {}
+        
+    base_indent = len(lines[0]) - len(lines[0].lstrip())
+    parsed, _ = _parse_block(0, base_indent)
+    return parsed
 
 
 def parse_docstring_fallback(content: str) -> Dict[str, Any]:

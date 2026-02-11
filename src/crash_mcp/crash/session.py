@@ -103,6 +103,11 @@ class CrashSession(BaseSession):
         self._process.sendline('set scroll off')
         self._process.expect(self.PROMPT)
 
+        # Disable Debuginfod to prevent GDB from hanging on network requests
+        self._process.sendline('gdb set debuginfod enabled off')
+        self._process.expect(self.PROMPT)
+
+
     def get_default_context(self) -> dict:
         """
         Query crash's current context (pid, cpu) for cache consistency.

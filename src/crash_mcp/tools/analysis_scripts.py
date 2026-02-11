@@ -121,13 +121,28 @@ def run_analysis_script(
     # Validate required parameters
     script_meta = registry[script_name]
     params = params or {}
+    injected_params = params.copy()
+    
     for param_name, param_info in script_meta.get("params", {}).items():
+        # 1. Check required
         if param_info.get("required") and param_name not in params:
             return json_response("error", error=f"Missing required parameter: '{param_name}' ({param_info.get('desc', '')})")
+            
+        # 2. Type Conversion (str -> int for hex/dec)
+        if param_name in params:
+            val = params[param_name]
+            expected_type = param_info.get("type")
+            
+            if expected_type == "int" and isinstance(val, str):
+                try:
+                    # Auto-detect base (0x for hex)
+                    injected_params[param_name] = int(val, 0)
+                except ValueError:
+                    return json_response("error", error=f"Invalid int value for '{param_name}': '{val}'")
     
     try:
         # Build script with injected parameters (pass param metadata for type hints)
-        full_script = _build_script_with_params(script_name, params, script_meta.get("params", {}))
+        full_script = _build_script_with_params(script_name, injected_params, script_meta.get("params", {}))
         
         # Execute via drgn session
         output = session.execute_command(f"drgn:{full_script}", truncate=False)

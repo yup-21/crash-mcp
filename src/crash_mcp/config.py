@@ -24,13 +24,22 @@ class Config:
     CRASH_EXTENSION_PATH = os.getenv("CRASH_EXTENSION_PATH", "")
     
     # Output Pagination
-    OUTPUT_TRUNCATE_LINES = int(os.getenv("CRASH_MCP_TRUNCATE_LINES", "20"))
+    OUTPUT_TRUNCATE_LINES = int(os.getenv("CRASH_MCP_TRUNCATE_LINES", "2000"))
     
     # Session Workdir Base
     SESSION_WORKDIR_BASE = os.getenv("CRASH_MCP_WORKDIR", "/tmp/crash-mcp-sessions")
     
-    # Command Caching
-    COMMAND_CACHE_ENABLED = os.getenv("CRASH_MCP_CACHE", "true").lower() == "true"
+    # Command Cache Mode: disable / normal / force
+    #   disable - no caching, always re-execute
+    #   normal  - only cache commands that were persisted to disk (large/slow outputs)
+    #   force   - cache all commands including small/fast ones in memory
+    COMMAND_CACHE_MODE = os.getenv("CRASH_MCP_CACHE", "normal").lower()
+    if COMMAND_CACHE_MODE not in ("disable", "normal", "force"):
+        COMMAND_CACHE_MODE = "normal"
+    
+    # Command Persistence Threshold (seconds)
+    # Only save output to disk if execution time exceeds this value or output is truncated
+    COMMAND_SAVE_THRESHOLD_SECONDS = float(os.getenv("COMMAND_SAVE_THRESHOLD_SECONDS", "2.0"))
 
     # External Tools
     GET_DUMPINFO_SCRIPT = os.getenv("GET_DUMPINFO_SCRIPT", "")

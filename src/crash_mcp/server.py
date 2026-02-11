@@ -38,7 +38,6 @@ def register_all_tools(mcp: FastMCP):
     from crash_mcp.tools import get_info
     get_info.register(mcp)
 
-    # Prompts
     from crash_mcp import prompts
     prompts.register(mcp)
 

@@ -194,9 +194,9 @@ class BaseSession:
                         # 匹配到 prompt，命令完成
                         break
                     else:
-                        # 超时但继续尝试 (可能输出太长)
-                        logger.warning(f"Command output taking longer than expected")
-                        break
+                        # 超时 - 抛出异常以中断后续操作 (防止死等)
+                        logger.error(f"Command '{command}' timed out (>{timeout}s)")
+                        raise TimeoutError(f"Command '{command}' timed out")
                 except pexpect.EOF:
                     output_parts.append(self._process.before)
                     raise RuntimeError("Session closed unexpectedly")
@@ -264,37 +264,83 @@ class BaseSession:
 
     def close(self):
         """
-        Terminates the session.
+        Terminates the session with extreme prejudice if needed.
         """
-        if self.is_active():
-            logger.info("Closing session...")
-            try:
-                self._process.sendline('quit')
-                # Wait for process to exit, up to 3 seconds
-                import time
-                for _ in range(30):
-                    time.sleep(0.1)
-                    if not self.is_active():
-                        logger.info("Session exited gracefully after 'quit'")
-                        break
-                else:
-                    logger.warning("Session did not exit after 'quit', forcing termination")
-                    raise Exception("Timeout waiting for quit")
-                if hasattr(self._process, 'close'):
-                    self._process.close()
-                elif hasattr(self._process, 'wait'):
-                    self._process.wait()
-            except Exception as e:
-                logger.warning(f"Error closing session gracefully: {e}")
-                if hasattr(self._process, 'terminate'):
-                    self._process.terminate(force=True)
-                elif hasattr(self._process, 'kill'):
-                     try:
-                        import signal
-                        self._process.kill(signal.SIGKILL)
-                     except:
-                        pass
+        # If already closed, just cleanup and return
+        if self._process is None:
+            return
+
+        # Double check liveness
+        if not self.is_active():
             self._process = None
+            return
+
+        logger.info("Closing session...")
+        
+        # 1. Attempt Graceful Exit (send 'quit')
+        try:
+            self._process.sendline('quit')
+            # Wait for process to exit, up to 3 seconds
+            import time
+            for _ in range(30):
+                time.sleep(0.1)
+                if not self.is_active():
+                    logger.info("Session exited gracefully after 'quit'")
+                    break
+            else:
+                logger.warning("Session did not exit after 'quit', forcing termination")
+                raise Exception("Timeout waiting for quit")
+        except Exception:
+            # Code might have already exited or pipe broken
+            pass
+
+        import time
+        import signal
+        
+        # 2. Wait up to 2 seconds for graceful exit
+        # We poll every 0.1s
+        for _ in range(20):
+            if not self.is_active():
+                self._process = None
+                return
+            time.sleep(0.1)
+
+        logger.warning("Process did not exit gracefully. Escalating to SIGTERM.")
+
+        # 3. Escalation: SIGTERM
+        try:
+            # Handle PopenSpawn (wraps subprocess.Popen in .proc)
+            if hasattr(self._process, 'proc'): 
+                self._process.proc.terminate()
+            # Handle pexpect.spawn
+            elif hasattr(self._process, 'terminate'):
+                # force=False usually sends SIGHUP or SIGTERM depending on implementation
+                self._process.terminate(force=False)
+        except Exception as e:
+            logger.debug(f"Error sending SIGTERM: {e}")
+
+        # Wait up to 1 second for SIGTERM to take effect
+        for _ in range(10):
+            if not self.is_active():
+                self._process = None
+                return
+            time.sleep(0.1)
+
+        logger.error("Process did not exit after SIGTERM. Escalating to SIGKILL.")
+
+        # 4. Ultimate Escalation: SIGKILL
+        try:
+            if hasattr(self._process, 'proc'):
+                self._process.proc.kill()
+            elif hasattr(self._process, 'kill'):
+                self._process.kill(signal.SIGKILL)
+            elif hasattr(self._process, 'terminate'):
+                self._process.terminate(force=True)
+        except Exception as e:
+             logger.error(f"Error sending SIGKILL: {e}")
+        
+        # Final cleanup
+        self._process = None
 
 
     def validate_remote_environment(self):

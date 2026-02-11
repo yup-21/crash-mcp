@@ -13,8 +13,15 @@ logger = logging.getLogger("crash-mcp")
 
 def get_crash_info(session_id: Optional[str] = None, timeout: int = 300) -> str:
     """Get automated crash diagnosis report.
+    
+    The timeout has a minimum value of 300 seconds to support large dump analysis.
     """
     cmd_template = Config.GET_DUMPINFO_SCRIPT
+    # Enforce minimum timeout of 300s for stability to handle large dumps
+    if timeout < 300:
+        logger.info(f"Overriding timeout {timeout}s -> 300s (minimum)")
+        timeout = 300
+
     if not cmd_template:
         return json_response("error", error="GET_DUMPINFO_SCRIPT not configured")
     
@@ -33,6 +40,26 @@ def get_crash_info(session_id: Optional[str] = None, timeout: int = 300) -> str:
         vmlinux=vmlinux_path
     )
     
+    cmd_name = "get_crash_info"
+    
+    # Check cache first
+    if session and session.command_store:
+        cached = session.command_store.get_cached("script", cmd_name, {})
+        if cached:
+            if cached.output_file and cached.output_file.exists():
+                try:
+                    output = cached.output_file.read_text()
+                    findings = _parse_report(output)
+                    
+                    if findings and "parse_error" not in findings:
+                        logger.info(f"Cache hit for {cmd_name}")
+                        return json_response("success", {
+                            "findings": findings,
+                            "cached": True
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to read/parse cache for {cmd_name}: {e}")
+
     logger.info(f"Executing: {cmd_str}")
     
     try:
@@ -44,22 +71,13 @@ def get_crash_info(session_id: Optional[str] = None, timeout: int = 300) -> str:
             timeout=timeout + 60
         )
         
-        # Extract JSON from output (between markers)
         output = result.stdout
-        findings = None
-        
-        if "--- JSON REPORT START ---" in output:
-            try:
-                start = output.index("--- JSON REPORT START ---") + len("--- JSON REPORT START ---")
-                end = output.index("--- JSON REPORT END ---")
-                json_str = output[start:end].strip()
-                findings = json.loads(json_str)
-            except (ValueError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to parse JSON report: {e}")
-                findings = {"parse_error": str(e), "raw_output": output[-2000:]}
-        else:
-            # No JSON markers, return raw output (truncated)
-            findings = {"raw_output": output[-2000:] if len(output) > 2000 else output}
+        findings = _parse_report(output)
+            
+        # Manually persist the full report to CommandStore
+        if session and session.command_store:
+            # Save raw output (stdout)
+            session.command_store.save("script", cmd_name, result.stdout, {}, is_error=result.returncode != 0, force_save=True)
         
         return json_response("success", {
             "findings": findings,
@@ -71,6 +89,22 @@ def get_crash_info(session_id: Optional[str] = None, timeout: int = 300) -> str:
     except Exception as e:
         logger.error(f"Error executing script: {e}")
         return json_response("error", error=str(e))
+
+
+def _parse_report(output: str) -> dict:
+    """Parse automated crash report JSON from output."""
+    if "--- JSON REPORT START ---" in output:
+        try:
+            start = output.index("--- JSON REPORT START ---") + len("--- JSON REPORT START ---")
+            end = output.index("--- JSON REPORT END ---")
+            json_str = output[start:end].strip()
+            return json.loads(json_str)
+        except (ValueError, json.JSONDecodeError, IndexError) as e:
+            logger.warning(f"Failed to parse JSON report: {e}")
+            return {"parse_error": str(e), "raw_output": output[-2000:]}
+    else:
+        # No JSON markers, return raw output (truncated)
+        return {"raw_output": output[-2000:] if len(output) > 2000 else output}
 
 
 def register(mcp: FastMCP):

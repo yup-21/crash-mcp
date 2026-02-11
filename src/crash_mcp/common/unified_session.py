@@ -158,15 +158,24 @@ class UnifiedSession:
         # Get context relevant to this command
         relevant_context = self._get_relevant_context(cmd)
         
-        # Check cache (unless forced)
-        if self.command_store and not force and Config.COMMAND_CACHE_ENABLED:
+        # Check cache (unless forced or disabled)
+        cache_mode = Config.COMMAND_CACHE_MODE
+        if self.command_store and not force and cache_mode != "disable":
             cached = self.command_store.get_cached(engine, cmd, relevant_context)
             if cached:
-                logger.debug(f"Cache hit for {engine}:{cmd}")
-                return cached
+                # normal: only use cache for persisted (file-backed) results
+                # force: use cache for all results (file + memory)
+                if cache_mode == "normal" and not cached.output_file:
+                    cached = None  # Skip memory-only cache, re-execute
+                if cached:
+                    logger.debug(f"Cache hit for {engine}:{cmd}")
+                    return cached
         
         # Execute command (no truncation - we'll handle that in the tool layer)
+        import time
+        start_time = time.time()
         output = self.execute_command(f"{engine}:{cmd}", timeout=timeout, truncate=False)
+        duration = time.time() - start_time
         
         # Detect if output is an error (should not be cached)
         is_error = output.strip().startswith("Error:")
@@ -176,7 +185,8 @@ class UnifiedSession:
         
         # Persist and return
         if self.command_store:
-            return self.command_store.save(engine, cmd, output, relevant_context, is_error=is_error)
+            return self.command_store.save(engine, cmd, output, relevant_context, 
+                                           is_error=is_error, duration=duration)
         
         # Fallback for sessions without workdir
         return CommandResult(
