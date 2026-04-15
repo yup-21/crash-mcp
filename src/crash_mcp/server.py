@@ -1,16 +1,25 @@
 """Crash MCP Server - Main entry point."""
 import logging
+from pathlib import Path
 import click
 from mcp.server.fastmcp import FastMCP
 
 from crash_mcp.config import Config
+
+
+def _get_server_log_path() -> Path:
+    """Store server logs alongside other crash-mcp runtime artifacts."""
+    workdir = Path(Config.SESSION_WORKDIR_BASE)
+    workdir.mkdir(parents=True, exist_ok=True)
+    return workdir / "server.log"
+
 
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL.upper()), 
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("server.log"),
+        logging.FileHandler(_get_server_log_path(), encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
